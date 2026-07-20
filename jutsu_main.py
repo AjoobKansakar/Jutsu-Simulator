@@ -39,14 +39,25 @@ while True:
             fingers = detector.fingersUp(hand)
 
             # Hand Sign Detection
-
             # Tiger Seal: Index and Middle UP, others DOWN
-            if fingers == [0, 1, 1, 0, 0]: # Display Tiger
-                cv2.putText(img, "SEAL: TIGER (FIRE)", (450, 100), 
-                            cv2.FONT_HERSHEY_TRIPLEX, 2, (0, 0, 255), 3) # Red color (0, 0, 255) because Tiger is often Fire Style!
+            if fingers == [0, 1, 1, 0, 0]:
+                msg = "TIGER"
                 
-                # changing the fingertip glow to Red when the Tiger seal is active
-                for id in [8, 12]: # Index and Middle tips
+                # To center the Text UI
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                
+                # Get the width and height of the text box
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                
+                # Calculate X to be exactly in the middle: (Screen Width / 2) - (Text Width / 2)
+                text_x = (1280 - w) // 2
+                
+                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 0, 255), thick)
+                
+                # changing the fingertip glow to Red
+                for id in [8, 12]:
                     cx, cy = lmList[id][0], lmList[id][1]
                     cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
             
