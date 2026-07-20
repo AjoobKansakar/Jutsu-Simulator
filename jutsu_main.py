@@ -37,6 +37,18 @@ while True:
 
             # Logical Check for fingers
             fingers = detector.fingersUp(hand)
+
+            # Hand Sign Detection
+
+            # Tiger Seal: Index and Middle UP, others DOWN
+            if fingers == [0, 1, 1, 0, 0]: # Display Tiger
+                cv2.putText(img, "SEAL: TIGER (FIRE)", (450, 100), 
+                            cv2.FONT_HERSHEY_TRIPLEX, 2, (0, 0, 255), 3) # Red color (0, 0, 255) because Tiger is often Fire Style!
+                
+                # changing the fingertip glow to Red when the Tiger seal is active
+                for id in [8, 12]: # Index and Middle tips
+                    cx, cy = lmList[id][0], lmList[id][1]
+                    cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
             
             # finger index count on the screen UI
             cv2.putText(img, f'Fingers: {fingers}', (hand['bbox'][0], hand['bbox'][1] - 50),
