@@ -1,23 +1,83 @@
 import cv2 
 from cvzone.HandTrackingModule import HandDetector 
+import math # distance calculation to handle overlapping of hands
 
-# 1. Webcam setup
+# for webcam
 cap = cv2.VideoCapture(0)
 cap.set(3, 1280)
 cap.set(4, 720)
 
-# 2. Initialize the Hand Detector
+# Initializing Hand Detector
 detector = HandDetector(detectionCon=0.8, maxHands=2)
 
 print("Skeletal Tracking Activated... Press 'q' to quit.")
 
 while True:
     success, img = cap.read()
+    # camera Flip to mirror
+    img = cv2.flip(img, 1)
 
     # Findin Hand using CVzone 
-    hands, img = detector.findHands(img, draw=True) # draw=true to draw defualt green box and dots
+    hands, img = detector.findHands(img, draw=False) # draw=false to remove bounding box around the hannds
 
     if hands:
+        # Hand Sign Detection
+        
+        # checking for 2-handed seals first
+        if len(hands) == 2:
+            hand1 = hands[0]
+            hand2 = hands[1]
+            fingers1 = detector.fingersUp(hand1)
+            fingers2 = detector.fingersUp(hand2)
+
+            # fixing Tiger seal stability 
+            # fingertip coordinates for both hands
+            # ID 8 = Index Tip, ID 12 = Middle Tip
+            idx1 = hand1["lmList"][8]
+            idx2 = hand2["lmList"][8]
+            mid1 = hand1["lmList"][12]
+            mid2 = hand2["lmList"][12]
+
+            # Calculate distance between matching fingertips
+            dist_index = math.sqrt((idx1[0] - idx2[0])**2 + (idx1[1] - idx2[1])**2)
+            dist_middle = math.sqrt((mid1[0] - mid2[0])**2 + (mid1[1] - mid2[1])**2)
+
+            # Tiger Seal: If index tips are close AND middle tips are close AND they are pointing up
+            if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
+                msg = "TIGER"
+                # To center the Text UI
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                # Get the width and height of the text box
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                # Calculate X to be exactly in the middle: (Screen Width / 2) - (Text Width / 2)
+                text_x = (1280 - w) // 2
+                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 0, 255), thick) # Red for Tiger
+                
+                # changing the fingertip glow to Red
+                for h_data in [hand1, hand2]:
+                    for id in [8, 12]: # Index and Middle tips
+                        cx, cy = h_data["lmList"][id][0], h_data["lmList"][id][1]
+                        cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
+
+            # Horse Seal: Only Index UP, others DOWN 
+            # checking index 1 (Index Finger) and indices 2,3,4 (Middle, Ring, Pinky)
+            elif fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
+                 fingers2[1] == 1 and fingers2[2:] == [0, 0, 0] and dist_index < 100:
+                msg = "HORSE"
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                text_x = (1280 - w) // 2
+                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 255), thick) # Yellow for horse
+                
+                # changing the fingertip glow to Yellow
+                for h_data in [hand1, hand2]:
+                    cx, cy = h_data["lmList"][8][0], h_data["lmList"][8][1] # Index tip
+                    cv2.circle(img, (cx, cy), 20, (0, 255, 255), cv2.FILLED)
+
         for hand in hands:
             # 21 landmark points using MediaPipe
             lmList = hand["lmList"] 
@@ -38,32 +98,18 @@ while True:
             # Logical Check for fingers
             fingers = detector.fingersUp(hand)
 
-            # Hand Sign Detection
-            # Tiger Seal: Index and Middle UP, others DOWN
-            if fingers == [0, 1, 1, 0, 0]:
-                msg = "TIGER"
-                
-                # To center the Text UI
-                font = cv2.FONT_HERSHEY_TRIPLEX
-                scale = 2.6
-                thick = 2
-                
-                # Get the width and height of the text box
-                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                
-                # Calculate X to be exactly in the middle: (Screen Width / 2) - (Text Width / 2)
-                text_x = (1280 - w) // 2
-                
-                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 0, 255), thick)
-                
-                # changing the fingertip glow to Red
-                for id in [8, 12]:
-                    cx, cy = lmList[id][0], lmList[id][1]
-                    cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
-            
-            # finger index count on the screen UI
-            cv2.putText(img, f'Fingers: {fingers}', (hand['bbox'][0], hand['bbox'][1] - 50),
-                        cv2.FONT_HERSHEY_PLAIN, 2, (0, 255, 0), 2)
+            handType = hand["type"]
+
+            if handType == "Left" or (handType == "Unknown" and hand['center'][0] < 640):
+                hand_label = "Left"
+                text_pos = (50, 500) # Bottom Left
+            else:
+                hand_label = "Right"
+                text_pos = (980, 500) # Bottom Right
+
+            text_y = 650 if handType == "Right" else 690 
+            cv2.putText(img, f'{hand_label}: {fingers}', text_pos,
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
     cv2.imshow("Naruto Jutsu Simulator", img)
 
