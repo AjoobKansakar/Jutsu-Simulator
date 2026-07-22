@@ -20,6 +20,9 @@ while True:
     # Findin Hand using CVzone 
     hands, img = detector.findHands(img, draw=False) # draw=false to remove bounding box around the hannds
 
+    # Variable to track if a 2-handed jutsu is already displayed
+    jutsu_active = False
+
     if hands:
         # Hand Sign Detection
         
@@ -45,7 +48,7 @@ while True:
             # Tiger Seal: If index tips are close AND middle tips are close AND they are pointing up
             if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
                 msg = "TIGER"
-                # To center the Text UI
+                jutsu_active = True
                 font = cv2.FONT_HERSHEY_TRIPLEX
                 scale = 2.6
                 thick = 2
@@ -54,41 +57,36 @@ while True:
                 # Calculate X to be exactly in the middle: (Screen Width / 2) - (Text Width / 2)
                 text_x = (1280 - w) // 2
                 cv2.putText(img, msg, (text_x, 100), font, scale, (0, 0, 255), thick) # Red for Tiger
-                
-                # changing the fingertip glow to Red
                 for h_data in [hand1, hand2]:
                     for id in [8, 12]: # Index and Middle tips
                         cx, cy = h_data["lmList"][id][0], h_data["lmList"][id][1]
                         cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
 
             # Horse Seal: Only Index UP, others DOWN 
-            # checking index 1 (Index Finger) and indices 2,3,4 (Middle, Ring, Pinky)
             elif fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
                  fingers2[1] == 1 and fingers2[2:] == [0, 0, 0] and dist_index < 100:
                 msg = "HORSE"
+                jutsu_active = True
                 font = cv2.FONT_HERSHEY_TRIPLEX
                 scale = 2.6
                 thick = 2
                 (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
                 text_x = (1280 - w) // 2
-                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 255), thick) # Yellow for horse
-                
-                # changing the fingertip glow to Yellow
+                cv2.putText(img, msg, (text_x, 100), font, scale, (255, 255, 0), thick) # Yellow for horse
                 for h_data in [hand1, hand2]:
                     cx, cy = h_data["lmList"][8][0], h_data["lmList"][8][1] # Index tip
-                    cv2.circle(img, (cx, cy), 20, (0, 255, 255), cv2.FILLED)
+                    cv2.circle(img, (cx, cy), 20, (255, 255, 0), cv2.FILLED)
 
             # Serpent Seal: All fingers folded/interlaced, hands touching
-            elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 50: # to insure the hands are close enough
+            elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 50: 
                 msg = "SERPENT"
+                jutsu_active = True
                 font = cv2.FONT_HERSHEY_TRIPLEX
                 scale = 2.6
                 thick = 2
                 (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
                 text_x = (1280 - w) // 2
                 cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick) # Green for Serpent
-                
-                # Green Hand glow
                 for h_data in [hand1, hand2]:
                     cx, cy = h_data["lmList"][0][0], h_data["lmList"][0][1]
                     cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
@@ -100,22 +98,31 @@ while True:
             # Custom Skeleton Overlay 
             # Landmark ids: 0: Wrist, 4: Thumbs up, 8: Index, 12: Middle, 16: Ring, 20: Pinky
             for id, lm in enumerate(lmList):
-                # lm[0], lm[1] are X and Y coordinates
                 cx, cy = lm[0], lm[1]
-                
-                # purple glow on the fingertips according to the finger Ids
                 if id in [4, 8, 12, 16, 20]:
                     cv2.circle(img, (cx, cy), 12, (255, 0, 255), cv2.FILLED)
                 else:
-                    # small blue dots for joints
                     cv2.circle(img, (cx, cy), 5, (255, 255, 0), cv2.FILLED)
 
             # Logical Check for fingers
             fingers = detector.fingersUp(hand)
 
+            # Dog Seal logic: Activated if any hand shows [1, 1, 1, 1, 1]
+            if fingers == [1, 1, 1, 1, 1] and not jutsu_active:
+                msg = "DOG"
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                text_x = (1280 - w) // 2
+                cv2.putText(img, msg, (text_x, 100), font, scale, (255, 0, 0), thick) # Blue UI
+                # Visual glow on the center of the palm
+                cx, cy = lmList[9][0], lmList[9][1]
+                cv2.circle(img, (cx, cy), 30, (255, 0, 0), cv2.FILLED)
+
             # Serpent seal logic
-            # If hands overlap and are detected as a single fist, activate Serpent
-            if fingers == [0, 0, 0, 0, 0]: # Indexing for Serpent
+            # only triggers if no 2-hand jutsu is active
+            if fingers == [0, 0, 0, 0, 0] and not jutsu_active: 
                 msg = "SERPENT"
                 font = cv2.FONT_HERSHEY_TRIPLEX
                 scale = 2.6
@@ -123,7 +130,6 @@ while True:
                 (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
                 text_x = (1280 - w) // 2
                 cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick) # Green UI
-                # Visual glow on the center of the combined hands
                 cx, cy = lmList[0][0], lmList[0][1]
                 cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
 
