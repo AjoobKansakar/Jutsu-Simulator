@@ -78,6 +78,21 @@ while True:
                     cx, cy = h_data["lmList"][8][0], h_data["lmList"][8][1] # Index tip
                     cv2.circle(img, (cx, cy), 20, (0, 255, 255), cv2.FILLED)
 
+            # Serpent Seal: All fingers folded/interlaced, hands touching
+            elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 50: # to insure the hands are close enough
+                msg = "SERPENT"
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                text_x = (1280 - w) // 2
+                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick) # Green for Serpent
+                
+                # Green Hand glow
+                for h_data in [hand1, hand2]:
+                    cx, cy = h_data["lmList"][0][0], h_data["lmList"][0][1]
+                    cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
+
         for hand in hands:
             # 21 landmark points using MediaPipe
             lmList = hand["lmList"] 
@@ -97,6 +112,20 @@ while True:
 
             # Logical Check for fingers
             fingers = detector.fingersUp(hand)
+
+            # Serpent seal logic
+            # If hands overlap and are detected as a single fist, activate Serpent
+            if fingers == [0, 0, 0, 0, 0]: # Indexing for Serpent
+                msg = "SERPENT"
+                font = cv2.FONT_HERSHEY_TRIPLEX
+                scale = 2.6
+                thick = 2
+                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+                text_x = (1280 - w) // 2
+                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick) # Green UI
+                # Visual glow on the center of the combined hands
+                cx, cy = lmList[0][0], lmList[0][1]
+                cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
 
             handType = hand["type"]
 
