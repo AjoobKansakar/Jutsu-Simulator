@@ -107,18 +107,19 @@ while True:
             # Logical Check for fingers
             fingers = detector.fingersUp(hand)
 
+            # Dog seal logic commented out for now
             # Dog Seal logic: Activated if any hand shows [1, 1, 1, 1, 1]
-            if fingers == [1, 1, 1, 1, 1] and not jutsu_active:
-                msg = "DOG"
-                font = cv2.FONT_HERSHEY_TRIPLEX
-                scale = 2.6
-                thick = 2
-                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                text_x = (1280 - w) // 2
-                cv2.putText(img, msg, (text_x, 100), font, scale, (255, 0, 0), thick) # Blue UI
-                # Visual glow on the center of the palm
-                cx, cy = lmList[9][0], lmList[9][1]
-                cv2.circle(img, (cx, cy), 30, (255, 0, 0), cv2.FILLED)
+            # if fingers == [1, 1, 1, 1, 1] and not jutsu_active:
+            #     msg = "DOG"
+            #     font = cv2.FONT_HERSHEY_TRIPLEX
+            #     scale = 2.6
+            #     thick = 2
+            #     (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
+            #     text_x = (1280 - w) // 2
+            #     cv2.putText(img, msg, (text_x, 100), font, scale, (255, 0, 0), thick) # Blue UI
+            #     # Visual glow on the center of the palm
+            #     cx, cy = lmList[9][0], lmList[9][1]
+            #     cv2.circle(img, (cx, cy), 30, (255, 0, 0), cv2.FILLED)
 
             # Serpent seal logic
             # only triggers if no 2-hand jutsu is active
