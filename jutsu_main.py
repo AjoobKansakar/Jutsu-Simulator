@@ -5,17 +5,29 @@ import time # For combo timing
 import random # chidori lighting
 
 # Chidori lighting effect function
-def draw_jagged_bolt(img, start, end, color, thickness):
+def draw_jagged_bolt(img, start, end, color, thickness, branching=False):
     """Draws a multi-segment jagged line to look like real lightning"""
     points = [start]
-    num_segments = 4
+    num_segments = 6 # lighting bolts effect
+    
+    current_pos = list(start)
     for i in range(1, num_segments):
-        # Calculate a point along the line and add random offset
-        mid_x = start[0] + (end[0] - start[0]) * i / num_segments
-        mid_y = start[1] + (end[1] - start[1]) * i / num_segments
-        offset_x = random.randint(-20, 20)
-        offset_y = random.randint(-20, 20)
-        points.append((int(mid_x + offset_x), int(mid_y + offset_y)))
+        # Calculate progress towards end
+        target_x = start[0] + (end[0] - start[0]) * i / num_segments
+        target_y = start[1] + (end[1] - start[1]) * i / num_segments
+        
+        # Large random offsets to make it "spread" across the frame
+        offset_x = random.randint(-40, 40)
+        offset_y = random.randint(-40, 40)
+        
+        next_pt = (int(target_x + offset_x), int(target_y + offset_y))
+        points.append(next_pt)
+        
+        # Occasional branching bolts to cover more screen area
+        if branching and random.random() > 0.8:
+            branch_end = (next_pt[0] + random.randint(-150, 150), next_pt[1] + random.randint(-150, 150))
+            draw_jagged_bolt(img, next_pt, branch_end, color, thickness // 2, False)
+
     points.append(end)
     
     for i in range(len(points) - 1):
@@ -179,27 +191,35 @@ while True:
             if chidori_ready and fingers == [1, 1, 1, 1, 1] and not chidori_active:
                 chidori_active = True
                 chidori_start_time = time.time()
+                chidori_hand_type = current_hand_side
 
             # 1 chidori per frame logic
-            if chidori_active and not chidori_drawn_this_frame:
+            if chidori_active and not chidori_drawn_this_frame and current_hand_side == chidori_hand_type:
                 cx, cy = lmList[9][0], lmList[9][1] # Palm center
-                # 1. Glow Aura
-                cv2.circle(img, (cx, cy), 80, (255, 255, 0), 2)
-                cv2.circle(img, (cx, cy), 70, (255, 200, 0), 5)
-                # 2. Electric Bolts
-                for _ in range(15):
-                    rand_x = cx + random.randint(-200, 200)
-                    rand_y = cy + random.randint(-200, 200)
-                    draw_jagged_bolt(img, (cx, cy), (rand_x, rand_y), (255, 180, 0), 4) # Blue
-                    draw_jagged_bolt(img, (cx, cy), (rand_x, rand_y), (255, 255, 255), 1) # Core
-                # 3. White Center Core
-                cv2.circle(img, (cx, cy), random.randint(35, 55), (255, 255, 255), cv2.FILLED)
+                
+                # Multi-layered Core for Bright Flare
+                cv2.circle(img, (cx, cy), random.randint(70, 100), (255, 255, 0), 2) # Outer Cyan ring
+                cv2.circle(img, (cx, cy), random.randint(50, 70), (255, 255, 255), cv2.FILLED) # Pure white core
+                
+                # frame-spreading bolts (20 bolts)
+                for _ in range(20):
+                    dist_x = random.randint(-450, 400)
+                    dist_y = random.randint(-450, 400)
+                    end_pt = (cx + dist_x, cy + dist_y)
+                    
+                    # core layer 1: Thick Glowing Cyan/Blue
+                    draw_jagged_bolt(img, (cx, cy), end_pt, (255, 150, 0), 5, branching=True)
+                    # core layer 2: Thin Sharp White Core
+                    draw_jagged_bolt(img, (cx, cy), end_pt, (255, 255, 255), 1, branching=False)
+
+                #  Palm Overlap to cover the palm 
+                cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
                 
                 # Mark as drawn so other hands in this frame don't get the effect
                 chidori_drawn_this_frame = True
                 
                 # Title and Duration UI
-                c_msg = "  CHIDORI   "
+                c_msg = "CHIDORI"
                 (cw, ch), _ = cv2.getTextSize(c_msg, cv2.FONT_HERSHEY_TRIPLEX, 3.0, 4)
                 cv2.putText(img, c_msg, ((1280 - cw) // 2, 200), cv2.FONT_HERSHEY_TRIPLEX, 3.0, (255, 255, 0), 4)
                 rem_chidori = max(0, chidori_duration - (time.time() - chidori_start_time))
