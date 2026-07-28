@@ -151,15 +151,22 @@ while True:
             fingers = detector.fingersUp(hand)
             handType = hand["type"]
 
-            # Chidori Effect with single hand lock
-            # Trigger activation (Locks to the side that first opens palm)
+            # Determining side-based label for better stability so that chidori is active on only 1 side
+            if handType == "Left" or (handType == "Unknown" and hand['center'][0] < 640):
+                current_hand_side = "Left"
+            else:
+                current_hand_side = "Right"
+
+            # Chidori Effect via single hand lock
+            # Trigger activation logic:
+            # Chidori active to the side that first opens palm
             if chidori_ready and fingers == [1, 1, 1, 1, 1] and not chidori_active:
                 chidori_active = True
                 chidori_start_time = time.time()
-                chidori_hand_type = handType
+                chidori_hand_type = current_hand_side # stable side displays
 
             # Render Lightning only on the locked hand
-            if chidori_active and handType == chidori_hand_type:
+            if chidori_active and current_hand_side == chidori_hand_type:
                 cx, cy = lmList[9][0], lmList[9][1] 
                 cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
                 for _ in range(12): 
@@ -191,13 +198,13 @@ while True:
                 cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
 
             # UI labels for hands
-            if handType == "Left" or (handType == "Unknown" and hand['center'][0] < 640):
+            if current_hand_side == "Left":
                 hand_label = "Left"
                 text_pos = (50, 500) 
             else:
                 hand_label = "Right"
                 text_pos = (980, 500) 
-            text_y = 650 if handType == "Right" else 690 
+            text_y = 650 if current_hand_side == "Right" else 690 
             cv2.putText(img, f'{hand_label}: {fingers}', text_pos,
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
