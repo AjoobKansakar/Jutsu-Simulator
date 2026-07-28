@@ -4,6 +4,23 @@ import math # distance calculation to handle overlapping of hands
 import time # For combo timing
 import random # chidori lighting
 
+# Chidori lighting effect function
+def draw_jagged_bolt(img, start, end, color, thickness):
+    """Draws a multi-segment jagged line to look like real lightning"""
+    points = [start]
+    num_segments = 4
+    for i in range(1, num_segments):
+        # Calculate a point along the line and add random offset
+        mid_x = start[0] + (end[0] - start[0]) * i / num_segments
+        mid_y = start[1] + (end[1] - start[1]) * i / num_segments
+        offset_x = random.randint(-20, 20)
+        offset_y = random.randint(-20, 20)
+        points.append((int(mid_x + offset_x), int(mid_y + offset_y)))
+    points.append(end)
+    
+    for i in range(len(points) - 1):
+        cv2.line(img, points[i], points[i+1], color, thickness)
+
 # for webcam
 cap = cv2.VideoCapture(0)
 cap.set(3, 1280)
@@ -18,7 +35,6 @@ last_seal = None          # Prevents adding the same seal 30 times per second
 chidori_ready = False     # Becomes True when HORSE -> TIGER -> SERPENT is done
 chidori_active = False    # Becomes True when Chidori is actually active (after open palm)
 chidori_start_time = 0    # Tracks the 20s duration
-chidori_hand_type = None  # Locks the Chidori to one specific hand (Left or Right)
 last_action_time = time.time() # Resets combo if user is too slow
 combo_start_time = 0      # Tracks when the first seal (HORSE) started
 time_limit = 7.0          # Seconds allowed to finish the sequence
@@ -42,13 +58,15 @@ while True:
     # Variable to track if a 2-handed jutsu is already displayed
     jutsu_active = False
     current_frame_seal = None # Tracks what seal is held in this specific frame
+    
+    # ensuring 1 chidori is active per frame
+    chidori_drawn_this_frame = False
 
     # Auto-reset logic ( 20s timeout)
     if chidori_active:
         if time.time() - chidori_start_time > chidori_duration:
             chidori_active = False
             chidori_ready = False
-            chidori_hand_type = None
             current_sequence = []
             last_seal = None
             combo_start_time = 0
@@ -151,40 +169,44 @@ while True:
             fingers = detector.fingersUp(hand)
             handType = hand["type"]
 
-            # Determining side-based label for better stability so that chidori is active on only 1 side
+            # Side check for stable UI labeling
             if handType == "Left" or (handType == "Unknown" and hand['center'][0] < 640):
                 current_hand_side = "Left"
             else:
                 current_hand_side = "Right"
 
-            # Chidori Effect via single hand lock
-            # Trigger activation logic:
-            # Chidori active to the side that first opens palm
+            # Chidori activation trigger
             if chidori_ready and fingers == [1, 1, 1, 1, 1] and not chidori_active:
                 chidori_active = True
                 chidori_start_time = time.time()
-                chidori_hand_type = current_hand_side # stable side displays
 
-            # Render Lightning only on the locked hand
-            if chidori_active and current_hand_side == chidori_hand_type:
-                cx, cy = lmList[9][0], lmList[9][1] 
-                cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
-                for _ in range(12): 
-                    x_end = cx + random.randint(-180, 180)
-                    y_end = cy + random.randint(-180, 180)
-                    cv2.line(img, (cx, cy), (x_end, y_end), (255, 200, 0), 3) 
-                    cv2.line(img, (cx, cy), (x_end, y_end), (255, 255, 255), 1) 
+            # 1 chidori per frame logic
+            if chidori_active and not chidori_drawn_this_frame:
+                cx, cy = lmList[9][0], lmList[9][1] # Palm center
+                # 1. Glow Aura
+                cv2.circle(img, (cx, cy), 80, (255, 255, 0), 2)
+                cv2.circle(img, (cx, cy), 70, (255, 200, 0), 5)
+                # 2. Electric Bolts
+                for _ in range(15):
+                    rand_x = cx + random.randint(-200, 200)
+                    rand_y = cy + random.randint(-200, 200)
+                    draw_jagged_bolt(img, (cx, cy), (rand_x, rand_y), (255, 180, 0), 4) # Blue
+                    draw_jagged_bolt(img, (cx, cy), (rand_x, rand_y), (255, 255, 255), 1) # Core
+                # 3. White Center Core
+                cv2.circle(img, (cx, cy), random.randint(35, 55), (255, 255, 255), cv2.FILLED)
                 
-                # Tittle and 20s timer UI
-                c_msg = "CHIDORI ACTIVE"
+                # Mark as drawn so other hands in this frame don't get the effect
+                chidori_drawn_this_frame = True
+                
+                # Title and Duration UI
+                c_msg = "  CHIDORI   "
                 (cw, ch), _ = cv2.getTextSize(c_msg, cv2.FONT_HERSHEY_TRIPLEX, 3.0, 4)
                 cv2.putText(img, c_msg, ((1280 - cw) // 2, 200), cv2.FONT_HERSHEY_TRIPLEX, 3.0, (255, 255, 0), 4)
-                
                 rem_chidori = max(0, chidori_duration - (time.time() - chidori_start_time))
                 cv2.putText(img, f"DURATION: {rem_chidori:.1f}s", (500, 50), 
                             cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 200, 0), 2)
 
-            # Serpent fallback to ensures merged hands set the combo seal
+            # Serpent fallback
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
                 msg = "SERPENT"
                 current_frame_seal = "SERPENT" 
@@ -197,34 +219,29 @@ while True:
                 cx, cy = lmList[0][0], lmList[0][1]
                 cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
 
-            # UI labels for hands
+            # UI labels
             if current_hand_side == "Left":
-                hand_label = "Left"
-                text_pos = (50, 500) 
+                hand_label, text_pos = "Left", (50, 500)
             else:
-                hand_label = "Right"
-                text_pos = (980, 500) 
+                hand_label, text_pos = "Right", (980, 500)
             text_y = 650 if current_hand_side == "Right" else 690 
             cv2.putText(img, f'{hand_label}: {fingers}', text_pos,
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
-        # Jutsu combo sequence stability logic
+        # Combo Sequence Stability
         if current_frame_seal and not chidori_active:
             if current_frame_seal == candidate_seal:
                 counter += 1
             else:
-                candidate_seal = current_frame_seal
-                counter = 0
+                candidate_seal, counter = current_frame_seal, 0
 
             if counter > selection_speed and current_frame_seal != last_seal:
                 current_sequence.append(current_frame_seal)
-                last_seal = current_frame_seal
-                last_action_time = time.time()
+                last_seal, last_action_time = current_frame_seal, time.time()
                 if current_sequence[-3:] == ["HORSE", "TIGER", "SERPENT"]:
-                    chidori_ready = True
-                    combo_start_time = 0 
+                    chidori_ready, combo_start_time = True, 0 
         
-        # Display Combo Sequence and Timer
+        # Chidori UI
         if not chidori_active:
             cv2.putText(img, f"CHAKRA: {' -> '.join(current_sequence[-3:])}", (20, 50), 
                         cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 2)
