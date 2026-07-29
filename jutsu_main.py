@@ -224,15 +224,12 @@ while True:
                 cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
                 chidori_drawn_this_frame = True
                 
-                # UI
-                c_msg = "⚡ CHIDORI ACTIVE ⚡"
-                (cw, ch), _ = cv2.getTextSize(c_msg, cv2.FONT_HERSHEY_TRIPLEX, 3.0, 4)
-                cv2.putText(img, c_msg, ((1280 - cw) // 2, 200), cv2.FONT_HERSHEY_TRIPLEX, 3.0, (255, 255, 0), 4)
+                # Chidori Text UI
                 rem_chidori = max(0, chidori_duration - (time.time() - chidori_start_time))
                 cv2.putText(img, f"DURATION: {rem_chidori:.1f}s", (500, 50), 
-                            cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 200, 0), 2)
+                            cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
 
-            # Serpent fallback
+            # Serpent fallback to ensures merged hands set the combo seal
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
                 msg = "SERPENT"
                 current_frame_seal = "SERPENT" 
@@ -245,7 +242,7 @@ while True:
                 cx, cy = lmList[0][0], lmList[0][1]
                 cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
 
-            # UI labels
+            # UI labels for hands
             if current_hand_side == "Left":
                 hand_label, text_pos = "Left", (50, 500)
             else:
@@ -268,21 +265,22 @@ while True:
                     chidori_ready, combo_start_time = True, 0 
         
         # Bottom HUD UI
-        if not chidori_active:
+        if not chidori_active and not chidori_ready:
             cv2.putText(img, f"CHAKRA: {' -> '.join(current_sequence[-3:])}", (20, 50), 
                         cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 2)
-            if combo_start_time != 0 and not chidori_ready:
+            if combo_start_time != 0:
                 rem_time = max(0, time_limit - (time.time() - combo_start_time))
                 cv2.putText(img, f"TIMER: {rem_time:.1f}s", (1000, 50), 
                             cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 255, 255), 2)
-            if chidori_ready:
-                ready_msg = "⚡ CHAKRA CHARGED: OPEN PALM ⚡"
-                (rw, rh), _ = cv2.getTextSize(ready_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
-                cv2.putText(img, ready_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
+        
+        if chidori_ready and not chidori_active:
+            ready_msg = " Chidori "
+            (rw, rh), _ = cv2.getTextSize(ready_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
+            cv2.putText(img, ready_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
 
-    cv2.imshow("Naruto Jutsu Simulator", img)
+    cv2.imshow("Naruto-Jutsu Simulator", img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
-        pygame.mixer.quit() # stop the audio after timelimit
+        pygame.mixer.quit() 
         break
 
 cap.release()
