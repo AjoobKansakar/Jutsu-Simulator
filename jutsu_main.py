@@ -59,7 +59,7 @@ chidori_start_time = 0    # Tracks the 20s duration
 last_action_time = time.time() # Resets combo if user is too slow
 combo_start_time = 0      # Tracks when the first seal (HORSE) started
 time_limit = 7.0          # Seconds allowed to finish the sequence
-chidori_duration = 20.0   # How long Chidori stays active
+chidori_duration = 8.0   # How long Chidori stays active
 
 # Jutsu Sequence stability
 counter = 0               # Frames a seal has been held
