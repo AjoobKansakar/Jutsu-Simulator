@@ -3,12 +3,21 @@ from cvzone.HandTrackingModule import HandDetector
 import math # distance calculation to handle overlapping of hands
 import time # For combo timing
 import random # chidori lighting
+import pygame # sound effects
+
+# sound engine initialize
+pygame.mixer.init()
+try:
+    chidori_sound = pygame.mixer.Sound("chidori.mp3") # Ensure the file is in your folder!
+except:
+    print("Sound file not found. Please place chidori.mp3 in the folder.")
+    chidori_sound = None
 
 # Chidori lighting effect function
 def draw_jagged_bolt(img, start, end, color, thickness, branching=False):
     """Draws a multi-segment jagged line to look like real lightning"""
     points = [start]
-    num_segments = 6 # lighting bolts effect
+    num_segments = 6 # Increased segments for longer, more realistic bolts
     
     current_pos = list(start)
     for i in range(1, num_segments):
@@ -82,6 +91,8 @@ while True:
             current_sequence = []
             last_seal = None
             combo_start_time = 0
+            if chidori_sound: chidori_sound.stop()
+            
     elif time.time() - last_action_time > time_limit:
         current_sequence = []
         chidori_ready = False
@@ -192,34 +203,29 @@ while True:
                 chidori_active = True
                 chidori_start_time = time.time()
                 chidori_hand_type = current_hand_side
+                # chidori sound loop
+                if chidori_sound: chidori_sound.play(-1) 
 
             # 1 chidori per frame logic
             if chidori_active and not chidori_drawn_this_frame and current_hand_side == chidori_hand_type:
                 cx, cy = lmList[9][0], lmList[9][1] # Palm center
                 
-                # Multi-layered Core for Bright Flare
-                cv2.circle(img, (cx, cy), random.randint(70, 100), (255, 255, 0), 2) # Outer Cyan ring
-                cv2.circle(img, (cx, cy), random.randint(50, 70), (255, 255, 255), cv2.FILLED) # Pure white core
+                # Anime like VFX effect for chidori
+                cv2.circle(img, (cx, cy), random.randint(70, 100), (255, 255, 0), 2)
+                cv2.circle(img, (cx, cy), random.randint(50, 70), (255, 255, 255), cv2.FILLED)
                 
-                # frame-spreading bolts (20 bolts)
                 for _ in range(20):
                     dist_x = random.randint(-450, 400)
                     dist_y = random.randint(-450, 400)
                     end_pt = (cx + dist_x, cy + dist_y)
-                    
-                    # core layer 1: Thick Glowing Cyan/Blue
                     draw_jagged_bolt(img, (cx, cy), end_pt, (255, 150, 0), 5, branching=True)
-                    # core layer 2: Thin Sharp White Core
                     draw_jagged_bolt(img, (cx, cy), end_pt, (255, 255, 255), 1, branching=False)
 
-                #  Palm Overlap to cover the palm 
                 cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
-                
-                # Mark as drawn so other hands in this frame don't get the effect
                 chidori_drawn_this_frame = True
                 
-                # Title and Duration UI
-                c_msg = "CHIDORI"
+                # UI
+                c_msg = "⚡ CHIDORI ACTIVE ⚡"
                 (cw, ch), _ = cv2.getTextSize(c_msg, cv2.FONT_HERSHEY_TRIPLEX, 3.0, 4)
                 cv2.putText(img, c_msg, ((1280 - cw) // 2, 200), cv2.FONT_HERSHEY_TRIPLEX, 3.0, (255, 255, 0), 4)
                 rem_chidori = max(0, chidori_duration - (time.time() - chidori_start_time))
@@ -248,7 +254,7 @@ while True:
             cv2.putText(img, f'{hand_label}: {fingers}', text_pos,
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
-        # Combo Sequence Stability
+        # Combo Logic
         if current_frame_seal and not chidori_active:
             if current_frame_seal == candidate_seal:
                 counter += 1
@@ -261,7 +267,7 @@ while True:
                 if current_sequence[-3:] == ["HORSE", "TIGER", "SERPENT"]:
                     chidori_ready, combo_start_time = True, 0 
         
-        # Chidori UI
+        # Bottom HUD UI
         if not chidori_active:
             cv2.putText(img, f"CHAKRA: {' -> '.join(current_sequence[-3:])}", (20, 50), 
                         cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 2)
@@ -276,6 +282,7 @@ while True:
 
     cv2.imshow("Naruto Jutsu Simulator", img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
+        pygame.mixer.quit() # stop the audio after timelimit
         break
 
 cap.release()
