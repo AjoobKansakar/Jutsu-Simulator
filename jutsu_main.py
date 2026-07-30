@@ -120,8 +120,12 @@ while True:
                 fingers1 = detector.fingersUp(hand1)
                 fingers2 = detector.fingersUp(hand2)
 
-                # Chakra Reset logic
-                if fingers1 == [1, 1, 1, 1, 1] and fingers2 == [1, 1, 1, 1, 1]:
+                # distance logic between hands
+                p1, p2 = hand1['center'], hand2['center']
+                dist = math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+
+                # Chakra Resetn logic
+                if fingers1 == [1, 1, 1, 1, 1] and fingers2 == [1, 1, 1, 1, 1] and dist > 400:
                     current_sequence = []
                     chidori_ready = False
                     last_seal = None
@@ -137,9 +141,6 @@ while True:
                     cv2.putText(img, msg, (text_x, 150), font, scale, (255, 255, 255), thick)
 
                 # Rasengan friction logic
-                p1, p2 = hand1['center'], hand2['center']
-                dist = math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
-
                 # Charging Rasengan if hands are close and Chidori is not ready
                 if 100 < dist < 350 and not chidori_ready and not rasengan_active:
                     movement = math.sqrt((p2[0]-last_p2_pos[0])**2 + (p2[1]-last_p2_pos[1])**2)
@@ -153,7 +154,8 @@ while True:
                     
                     cv2.putText(img, f"CONCENTRATING CHAKRA: {int(rasengan_chakra)}%", (350, 60), 
                                 cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 0), 2)
-                    cv2.circle(img, (p1[0], p1[1]), int(rasengan_chakra/2), (255, 200, 0), 2)
+                    # Hovering effect for rasengan
+                    cv2.circle(img, (p1[0], p1[1] - 100), int(rasengan_chakra/2), (255, 200, 0), 2)
 
                 # fixing Tiger seal stability 
                 idx1 = hand1["lmList"][8]
@@ -164,7 +166,8 @@ while True:
                 dist_index = math.sqrt((idx1[0] - idx2[0])**2 + (idx1[1] - idx2[1])**2)
                 dist_middle = math.sqrt((mid1[0] - mid2[0])**2 + (mid1[1] - mid2[1])**2)
 
-                # Tiger Seal Logic
+                # Jutsu Seal Logics
+                # 1. Tiger Seal Logic
                 if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
                     msg = "TIGER"
                     jutsu_active = True
@@ -180,7 +183,7 @@ while True:
                             cx, cy = h_data["lmList"][id][0], h_data["lmList"][id][1]
                             cv2.circle(img, (cx, cy), 20, (0, 0, 255), cv2.FILLED)
 
-                # Horse Seal Logic
+                # 2. Horse Seal Logic
                 elif fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
                     fingers2[1] == 1 and fingers2[2:] == [0, 0, 0] and dist_index < 100:
                     msg = "HORSE"
@@ -198,7 +201,7 @@ while True:
                         cx, cy = h_data["lmList"][8][0], h_data["lmList"][8][1]
                         cv2.circle(img, (cx, cy), 20, (255, 255, 0), cv2.FILLED)
 
-                # Serpent Seal Logic 
+                # 3. Serpent Seal Logic 
                 elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 60: 
                     msg = "SERPENT"
                     jutsu_active = True
@@ -256,9 +259,10 @@ while True:
                 cv2.putText(img, f"DURATION: {rem_chidori:.1f}s", (500, 50), 
                             cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
 
-            # Rasengen VFX
-            if rasengan_active and not chidori_active:
-                cx, cy = lmList[9][0], lmList[9][1]
+            # Rasengan VFX
+            if rasengan_active and not chidori_active and not rasengan_drawn_this_frame:
+                # Hovering effect above the palm
+                cx, cy = lmList[9][0], lmList[9][1] - 100
                 
                 # smooth animation
                 t = cv2.getTickCount() / cv2.getTickFrequency()
@@ -267,7 +271,7 @@ while True:
                 overlay = img.copy()
                 for r in range(120, 60, -12):
                     alpha = max(0.04, (130 - r) / 500)
-                    cv2.circle(overlay, (cx, cy), r, (255, 180, 50), -1)
+                    cv2.circle(overlay, (cx, cy), r, (255, 100, 0), -1)
                     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
                 for i in range(15):
@@ -277,7 +281,7 @@ while True:
                     
                     # spinning energy stream
                     cv2.ellipse(img, (cx, cy), (r, r), rotation_angle, 
-                                start_angle, start_angle + 60, (255, 230, 100), 2)
+                                start_angle, start_angle + 60, (255, 150, 0), 2)
                     cv2.ellipse(img, (cx, cy), (r-2, r-2), rotation_angle, 
                                 start_angle + 10, start_angle + 30, (255, 255, 255), 1)
 
@@ -293,18 +297,22 @@ while True:
                 for i in range(5):
                     start = int((t * 150 + i * 70) % 360)
                     cv2.ellipse(img, (cx, cy), (55 + i * 2, 55 + i * 2), 
-                                start, 0, 220, (255, 230, 150), 2)
+                                start, 0, 220, (255, 180, 50), 2)
 
                 # white core
                 pulse = int(5 * math.sin(t * 10))
                 # Blow Effect/Aura
-                cv2.circle(img, (cx, cy), 65 + pulse, (255, 230, 180), 2)
+                cv2.circle(img, (cx, cy), 65 + pulse, (255, 120, 50), 2)
                 # Solid Core
                 cv2.circle(img, (cx, cy), 55 + pulse, (255, 255, 255), -1)
 
-                # UI Label
-                cv2.putText(img, "RASENGAN", (500, 100), 
-                            cv2.FONT_HERSHEY_TRIPLEX, 2, (255, 200, 0), 3)
+                # single hand activation
+                rasengan_drawn_this_frame = True
+
+                # Rasengan UI Label 
+                r_msg = " Rasengan "
+                (rw, rh), _ = cv2.getTextSize(r_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
+                cv2.putText(img, r_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
 
             # Serpent fallback to ensures merged hands set the combo seal
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
