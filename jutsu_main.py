@@ -254,31 +254,56 @@ while True:
                 cv2.putText(img, f"DURATION: {rem_chidori:.1f}s", (500, 50), 
                             cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
 
-            # Ransengan VFX 
+            # Rasengan VFX
             if rasengan_active and not chidori_active:
                 cx, cy = lmList[9][0], lmList[9][1]
-                rot_speed = time.time() * 30 
                 
-                #  Outer Swirling Chakra Shell
-                cv2.circle(img, (cx, cy), 85, (255, 180, 0), 1)
-                cv2.circle(img, (cx, cy), 80, (255, 220, 0), 2)
+                # smooth animation
+                t = cv2.getTickCount() / cv2.getTickFrequency()
                 
-                #  Dynamic Rotating Arcs (High frequency spirals)
-                for i in range(10):
-                    radius = random.randint(35, 75)
-                    start_angle = int(rot_speed * (i + 1) * 2) % 360
-                    # Layered blue and white swirls
-                    cv2.ellipse(img, (cx, cy), (radius, radius), 0, start_angle, start_angle + 110, (255, 210, 0), 2)
-                    cv2.ellipse(img, (cx, cy), (radius, radius), 0, start_angle + 180, start_angle + 290, (255, 255, 255), 1)
+                # Outer Glow 
+                overlay = img.copy()
+                for r in range(120, 60, -12):
+                    alpha = max(0.04, (130 - r) / 500)
+                    cv2.circle(overlay, (cx, cy), r, (255, 100, 0), -1)
+                    img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
-                #  Pulsing White Core with glow effect
-                pulse = random.randint(-5, 5)
-                # Outer glow core
-                cv2.circle(img, (cx, cy), 45 + pulse, (255, 255, 150), 2)
-                # Solid white center
-                cv2.circle(img, (cx, cy), 38 + pulse, (255, 255, 255), cv2.FILLED)
-                
-                cv2.putText(img, "RASENGAN", (500, 100), cv2.FONT_HERSHEY_TRIPLEX, 2, (255, 200, 0), 3)
+                # 2. High-speed spinning chakra shell (Darker Blue Streams)
+                for i in range(15):
+                    r = random.randint(70, 95)
+                    start_angle = int(t * 800 + i * 45) % 360
+                    rotation_angle = i * 24 
+                    cv2.ellipse(img, (cx, cy), (r, r), rotation_angle, 
+                                start_angle, start_angle + 60, (255, 150, 0), 2)
+                    # Inner white highlight remains for speed contrast
+                    cv2.ellipse(img, (cx, cy), (r-2, r-2), rotation_angle, 
+                                start_angle + 10, start_angle + 30, (255, 255, 255), 1)
+
+                # Swirling Energy Particles
+                for i in range(25):
+                    angle = t * 5 + i * 0.7
+                    p_radius = 60 + 15 * math.sin(t * 4 + i)
+                    px = int(cx + p_radius * math.cos(angle))
+                    py = int(cy + p_radius * math.sin(angle))
+                    cv2.circle(img, (px, py), 2, (255, 255, 255), -1)
+
+                # Inner Rotating Arcs
+                for i in range(5):
+                    start = int((t * 150 + i * 70) % 360)
+                    # Core Arcs: (255, 180, 50)
+                    cv2.ellipse(img, (cx, cy), (55 + i * 2, 55 + i * 2), 
+                                start, 0, 220, (255, 180, 50), 2)
+
+                # White Core with Blow Effect
+                pulse = int(5 * math.sin(t * 10))
+                # Blow Effect Aura: (255, 120, 50)
+                cv2.circle(img, (cx, cy), 65 + pulse, (255, 120, 50), 2)
+                # Pure White Solid Core
+                cv2.circle(img, (cx, cy), 55 + pulse, (255, 255, 255), -1)
+
+                # UI Label
+                cv2.putText(img, "RASENGAN", (500, 100), 
+                            cv2.FONT_HERSHEY_TRIPLEX, 2, (255, 150, 0), 3)
 
             # Serpent fallback to ensures merged hands set the combo seal
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
