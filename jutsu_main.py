@@ -8,9 +8,9 @@ import pygame # sound effects
 # sound engine initialize
 pygame.mixer.init()
 try:
-    chidori_sound = pygame.mixer.Sound("chidori.mp3") # Ensure the file is in your folder!
+    chidori_sound = pygame.mixer.Sound("chidori.mp3") 
 except:
-    print("Sound file not found. Please place chidori.mp3 in the folder.")
+    print("Sound file not found. Please check the name and the location of chidori.mp3 in the folder.")
     chidori_sound = None
 
 # Chidori lighting effect function
@@ -51,26 +51,31 @@ cap.set(4, 720)
 detector = HandDetector(detectionCon=0.8, maxHands=2)
 
 # Chidori Combination
-current_sequence = []     # Stores the order of seals performed
-last_seal = None          # Prevents adding the same seal 30 times per second
-chidori_ready = False     # Becomes True when HORSE -> TIGER -> SERPENT is done
-chidori_active = False    # Becomes True when Chidori is actually active (after open palm)
-chidori_start_time = 0    # Tracks the 20s duration
-last_action_time = time.time() # Resets combo if user is too slow
-combo_start_time = 0      # Tracks when the first seal (HORSE) started
-time_limit = 7.0          # Seconds allowed to finish the sequence
-chidori_duration = 8.0   # How long Chidori stays active
+current_sequence = []     
+last_seal = None          
+chidori_ready = False     
+chidori_active = False    
+chidori_start_time = 0    
+chidori_hand_type = None  
+last_action_time = time.time() 
+combo_start_time = 0      
+time_limit = 7.0          
+chidori_duration = 8.0   
+
+# Ransengan variables for temporal gesture detection
+rasengan_chakra = 0       
+rasengan_active = False   
+last_p2_pos = [0, 0]      # Used to track if the 'spinning' hand is moving
 
 # Jutsu Sequence stability
-counter = 0               # Frames a seal has been held
-selection_speed = 5       # Number of frames to confirm a seal (Debounce)
-candidate_seal = None     # The seal currently being performed before confirmation
+counter = 0               
+selection_speed = 5       
+candidate_seal = None     
 
 print("Skeletal Tracking Activated... Press 'q' to quit.")
 
 while True:
     success, img = cap.read()
-    # camera Flip to mirror
     img = cv2.flip(img, 1)
 
     # Findin Hand using CVzone 
@@ -88,6 +93,7 @@ while True:
         if time.time() - chidori_start_time > chidori_duration:
             chidori_active = False
             chidori_ready = False
+            chidori_hand_type = None
             current_sequence = []
             last_seal = None
             combo_start_time = 0
@@ -97,6 +103,10 @@ while True:
         current_sequence = []
         chidori_ready = False
         combo_start_time = 0
+
+    # Rasengan slow decay logic so that chatra doesn't reset instantly
+    if rasengan_chakra > 0 and not rasengan_active:
+        rasengan_chakra -= 0.2 
 
     if hands:
         # Hand Sign Detection - happens if Chidori is NOT active
@@ -114,6 +124,8 @@ while True:
                     chidori_ready = False
                     last_seal = None
                     combo_start_time = 0
+                    rasengan_chakra = 0
+                    rasengan_active = False
                     msg = "CHAKRA RESET"
                     font = cv2.FONT_HERSHEY_TRIPLEX
                     scale = 2.0
@@ -121,6 +133,25 @@ while True:
                     (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
                     text_x = (1280 - w) // 2
                     cv2.putText(img, msg, (text_x, 150), font, scale, (255, 255, 255), thick)
+
+                # Rasengan friction logic
+                p1, p2 = hand1['center'], hand2['center']
+                dist = math.sqrt((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2)
+
+                # Charging Rasengan if hands are close and Chidori is not ready
+                if 100 < dist < 350 and not chidori_ready and not rasengan_active:
+                    movement = math.sqrt((p2[0]-last_p2_pos[0])**2 + (p2[1]-last_p2_pos[1])**2)
+                    last_p2_pos = p2
+                    
+                    if movement > 5: # If hand is moving/rubbing
+                        rasengan_chakra += 0.8
+                    
+                    if rasengan_chakra >= 100:
+                        rasengan_chakra, rasengan_active = 100, True
+                    
+                    cv2.putText(img, f"CONCENTRATING CHAKRA: {int(rasengan_chakra)}%", (350, 60), 
+                                cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 0), 2)
+                    cv2.circle(img, (p1[0], p1[1]), int(rasengan_chakra/2), (255, 200, 0), 2)
 
                 # fixing Tiger seal stability 
                 idx1 = hand1["lmList"][8]
@@ -206,28 +237,48 @@ while True:
                 # chidori sound loop
                 if chidori_sound: chidori_sound.play(-1) 
 
-            # 1 chidori per frame logic
+            # Chidori Render Logic
             if chidori_active and not chidori_drawn_this_frame and current_hand_side == chidori_hand_type:
                 cx, cy = lmList[9][0], lmList[9][1] # Palm center
-                
-                # Anime like VFX effect for chidori
                 cv2.circle(img, (cx, cy), random.randint(70, 100), (255, 255, 0), 2)
                 cv2.circle(img, (cx, cy), random.randint(50, 70), (255, 255, 255), cv2.FILLED)
-                
                 for _ in range(20):
                     dist_x = random.randint(-450, 400)
                     dist_y = random.randint(-450, 400)
                     end_pt = (cx + dist_x, cy + dist_y)
                     draw_jagged_bolt(img, (cx, cy), end_pt, (255, 150, 0), 5, branching=True)
                     draw_jagged_bolt(img, (cx, cy), end_pt, (255, 255, 255), 1, branching=False)
-
                 cv2.circle(img, (cx, cy), random.randint(40, 60), (255, 255, 255), cv2.FILLED)
                 chidori_drawn_this_frame = True
-                
-                # Chidori Text UI
                 rem_chidori = max(0, chidori_duration - (time.time() - chidori_start_time))
                 cv2.putText(img, f"DURATION: {rem_chidori:.1f}s", (500, 50), 
                             cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
+
+            # Ransengan VFX 
+            if rasengan_active and not chidori_active:
+                cx, cy = lmList[9][0], lmList[9][1]
+                rot_speed = time.time() * 30 
+                
+                #  Outer Swirling Chakra Shell
+                cv2.circle(img, (cx, cy), 85, (255, 180, 0), 1)
+                cv2.circle(img, (cx, cy), 80, (255, 220, 0), 2)
+                
+                #  Dynamic Rotating Arcs (High frequency spirals)
+                for i in range(10):
+                    radius = random.randint(35, 75)
+                    start_angle = int(rot_speed * (i + 1) * 2) % 360
+                    # Layered blue and white swirls
+                    cv2.ellipse(img, (cx, cy), (radius, radius), 0, start_angle, start_angle + 110, (255, 210, 0), 2)
+                    cv2.ellipse(img, (cx, cy), (radius, radius), 0, start_angle + 180, start_angle + 290, (255, 255, 255), 1)
+
+                #  Pulsing White Core with glow effect
+                pulse = random.randint(-5, 5)
+                # Outer glow core
+                cv2.circle(img, (cx, cy), 45 + pulse, (255, 255, 150), 2)
+                # Solid white center
+                cv2.circle(img, (cx, cy), 38 + pulse, (255, 255, 255), cv2.FILLED)
+                
+                cv2.putText(img, "RASENGAN", (500, 100), cv2.FONT_HERSHEY_TRIPLEX, 2, (255, 200, 0), 3)
 
             # Serpent fallback to ensures merged hands set the combo seal
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
