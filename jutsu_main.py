@@ -8,10 +8,13 @@ import pygame # sound effects
 # sound engine initialize
 pygame.mixer.init()
 try:
-    chidori_sound = pygame.mixer.Sound("chidori.mp3") 
+    chidori_sound = pygame.mixer.Sound("chidori.mp3") # Chidori Sound track
+    rasengan_sound = pygame.mixer.Sound("rasengan.mp3") # Rasengan Sound track
+    rasengan_channel = pygame.mixer.Channel(1) # Separate channel for Rasengan
 except:
-    print("Sound file not found. Please check the name and the location of chidori.mp3 in the folder.")
+    print("Sound files not found. Please check the name and the location of chidori.mp3 and rasengan.mp3 in the folder.")
     chidori_sound = None
+    rasengan_sound = None
 
 # Chidori lighting effect function
 def draw_jagged_bolt(img, start, end, color, thickness, branching=False):
@@ -65,7 +68,7 @@ chidori_duration = 8.0
 # Ransengan variables for temporal gesture detection
 rasengan_chakra = 0       
 rasengan_active = False   
-last_p2_pos = [0, 0]      # Used to track if the 'spinning' hand is moving
+last_p2_pos = [0, 0]      # Used to track if hands are moving
 
 # Jutsu Sequence stability
 counter = 0               
@@ -90,7 +93,7 @@ while True:
     # ensuring 1 rasengan is active per frame
     rasengan_drawn_this_frame = False
 
-    # Auto-reset logic ( 20s timeout)
+    # Auto-reset logic ( 8s timeout)
     if chidori_active:
         if time.time() - chidori_start_time > chidori_duration:
             chidori_active = False
@@ -109,6 +112,8 @@ while True:
     # Rasengan slow decay logic so that chatra doesn't reset instantly
     if rasengan_chakra > 0 and not rasengan_active:
         rasengan_chakra -= 0.2 
+        # Stop sound if hands are pulled apart and not active
+        if rasengan_sound: rasengan_channel.stop()
 
     if hands:
         # Hand Sign Detection - happens if Chidori is NOT active
@@ -132,6 +137,9 @@ while True:
                     combo_start_time = 0
                     rasengan_chakra = 0
                     rasengan_active = False
+                    # Stop all sounds on reset
+                    if chidori_sound: chidori_sound.stop()
+                    if rasengan_sound: rasengan_channel.stop()
                     msg = "CHAKRA RESET"
                     font = cv2.FONT_HERSHEY_TRIPLEX
                     scale = 2.0
@@ -148,9 +156,14 @@ while True:
                     
                     if movement > 5: # If hand is moving/rubbing
                         rasengan_chakra += 0.8
+                        # Rasengan track while charging
+                        if rasengan_sound and not rasengan_channel.get_busy():
+                            rasengan_channel.play(rasengan_sound)
                     
                     if rasengan_chakra >= 100:
                         rasengan_chakra, rasengan_active = 100, True
+                        # Loop the sound once fully formed
+                        if rasengan_sound: rasengan_channel.play(rasengan_sound, loops=-1)
                     
                     cv2.putText(img, f"CONCENTRATING CHAKRA: {int(rasengan_chakra)}%", (350, 60), 
                                 cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 0), 2)
@@ -190,15 +203,9 @@ while True:
                 # Jutsu Seal Logics
                 # 1. Tiger Seal Logic
                 if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
-                    msg = "TIGER"
-                    jutsu_active = True
-                    current_frame_seal = "TIGER"
-                    font = cv2.FONT_HERSHEY_TRIPLEX
-                    scale = 2.6
-                    thick = 2
-                    (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                    text_x = (1280 - w) // 2
-                    cv2.putText(img, msg, (text_x, 100), font, scale, (0, 0, 255), thick)
+                    msg, jutsu_active, current_frame_seal = "TIGER", True, "TIGER"
+                    (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
+                    cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 0, 255), 2)
                     for h_data in [hand1, hand2]:
                         for id in [8, 12]:
                             cx, cy = h_data["lmList"][id][0], h_data["lmList"][id][1]
@@ -207,32 +214,19 @@ while True:
                 # 2. Horse Seal Logic
                 elif fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
                     fingers2[1] == 1 and fingers2[2:] == [0, 0, 0] and dist_index < 100:
-                    msg = "HORSE"
-                    jutsu_active = True
-                    current_frame_seal = "HORSE"
-                    if not current_sequence:
-                        combo_start_time = time.time()
-                    font = cv2.FONT_HERSHEY_TRIPLEX
-                    scale = 2.6
-                    thick = 2
-                    (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                    text_x = (1280 - w) // 2
-                    cv2.putText(img, msg, (text_x, 100), font, scale, (255, 255, 0), thick)
+                    msg, jutsu_active, current_frame_seal = "HORSE", True, "HORSE"
+                    if not current_sequence: combo_start_time = time.time()
+                    (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
+                    cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (255, 255, 0), 2)
                     for h_data in [hand1, hand2]:
                         cx, cy = h_data["lmList"][8][0], h_data["lmList"][8][1]
                         cv2.circle(img, (cx, cy), 20, (255, 255, 0), cv2.FILLED)
 
                 # 3. Serpent Seal Logic 
                 elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 60: 
-                    msg = "SERPENT"
-                    jutsu_active = True
-                    current_frame_seal = "SERPENT" 
-                    font = cv2.FONT_HERSHEY_TRIPLEX
-                    scale = 2.6
-                    thick = 2
-                    (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                    text_x = (1280 - w) // 2
-                    cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick)
+                    msg, jutsu_active, current_frame_seal = "SERPENT", True, "SERPENT"
+                    (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
+                    cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 255, 0), 2)
                     for h_data in [hand1, hand2]:
                         cx, cy = h_data["lmList"][0][0], h_data["lmList"][0][1]
                         cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
@@ -330,23 +324,17 @@ while True:
                 # single hand activation
                 rasengan_drawn_this_frame = True
 
-                # Rasengan UI label
+                # Rasengan UI label 
                 r_msg = " Rasengan "
                 (rw, rh), _ = cv2.getTextSize(r_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
                 cv2.putText(img, r_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
 
             # Serpent fallback to ensures merged hands set the combo seal
             if fingers == [0, 0, 0, 0, 0] and not jutsu_active and not chidori_active: 
-                msg = "SERPENT"
-                current_frame_seal = "SERPENT" 
-                font = cv2.FONT_HERSHEY_TRIPLEX
-                scale = 2.6
-                thick = 2
-                (w, h), _ = cv2.getTextSize(msg, font, scale, thick)
-                text_x = (1280 - w) // 2
-                cv2.putText(img, msg, (text_x, 100), font, scale, (0, 255, 0), thick) 
-                cx, cy = lmList[0][0], lmList[0][1]
-                cv2.circle(img, (cx, cy), 30, (0, 255, 0), cv2.FILLED)
+                msg, current_frame_seal = "SERPENT", "SERPENT"
+                (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
+                cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 255, 0), 2)
+                cv2.circle(img, (lmList[0][0], lmList[0][1]), 30, (0, 255, 0), cv2.FILLED)
 
             # UI labels for hands
             if current_hand_side == "Left":
