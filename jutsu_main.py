@@ -154,8 +154,29 @@ while True:
                     
                     cv2.putText(img, f"CONCENTRATING CHAKRA: {int(rasengan_chakra)}%", (350, 60), 
                                 cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 0), 2)
-                    # Hovering effect for rasengan
-                    cv2.circle(img, (p1[0], p1[1] - 100), int(rasengan_chakra/2), (255, 200, 0), 2)
+                    
+                    # Percentage-wise rasengan formation
+                    # to form the rasengan between the palms (exact center between palms)
+                    mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2 
+                    t_form = cv2.getTickCount() / cv2.getTickFrequency()
+                    scale_val = rasengan_chakra / 100.0
+
+                    # Formation Wind: Scaling to match final Rasengan size (~80-95 radius)
+                    for i in range(4):
+                        # Increased base radius logic so it grows smoothly into the full shell
+                        r_form = int((50 + i * 12) * scale_val)
+                        if r_form > 0:
+                            start_a = int(t_form * 600 + i * 45) % 360
+                            # for the spining wind formation between the palms
+                            cv2.ellipse(img, (mx, my), (r_form, r_form), i*24, start_a, start_a + 60, (255, 150, 0), 2)
+                    
+                    # Growing White Core: Scaled to hit 55px at 100%
+                    core_r = int(55 * scale_val)
+                    if core_r > 0:
+                        # Blow effect aura scaled
+                        cv2.circle(img, (mx, my), int(65 * scale_val), (255, 120, 50), 2)
+                        # Solid core scaled
+                        cv2.circle(img, (mx, my), core_r, (255, 255, 255), -1)
 
                 # fixing Tiger seal stability 
                 idx1 = hand1["lmList"][8]
@@ -309,7 +330,7 @@ while True:
                 # single hand activation
                 rasengan_drawn_this_frame = True
 
-                # Rasengan UI Label 
+                # Rasengan UI label
                 r_msg = " Rasengan "
                 (rw, rh), _ = cv2.getTextSize(r_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
                 cv2.putText(img, r_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
