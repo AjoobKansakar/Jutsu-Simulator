@@ -8,13 +8,15 @@ import pygame # sound effects
 # sound engine initialize
 pygame.mixer.init()
 try:
-    chidori_sound = pygame.mixer.Sound("chidori.mp3") # Chidori Sound track
-    rasengan_sound = pygame.mixer.Sound("rasengan.mp3") # Rasengan Sound track
+    chidori_sound = pygame.mixer.Sound("chidori.mp3") # Chidori sound track
+    rasengan_charge_sfx = pygame.mixer.Sound("rasengan_charging.mp3") # Rasengan charging sound track
+    rasengan_active_sfx = pygame.mixer.Sound("rasengan_activated.mp3") # Rasengan active sound track
     rasengan_channel = pygame.mixer.Channel(1) # Separate channel for Rasengan
 except:
     print("Sound files not found. Please check the name and the location of chidori.mp3 and rasengan.mp3 in the folder.")
     chidori_sound = None
-    rasengan_sound = None
+    rasengan_charge_sfx = None
+    rasengan_active_sfx = None
 
 # Chidori lighting effect function
 def draw_jagged_bolt(img, start, end, color, thickness, branching=False):
@@ -68,7 +70,7 @@ chidori_duration = 8.0
 # Ransengan variables for temporal gesture detection
 rasengan_chakra = 0       
 rasengan_active = False   
-last_p2_pos = [0, 0]      # Used to track if hands are moving
+last_p2_pos = [0, 0] # Used to track if hands are moving
 
 # Jutsu Sequence stability
 counter = 0               
@@ -112,8 +114,9 @@ while True:
     # Rasengan slow decay logic so that chatra doesn't reset instantly
     if rasengan_chakra > 0 and not rasengan_active:
         rasengan_chakra -= 0.2 
-        # Stop sound if hands are pulled apart and not active
-        if rasengan_sound: rasengan_channel.stop()
+        # Stop sound if chakra drops below 20%
+        if rasengan_chakra < 20 and rasengan_channel.get_busy() and not rasengan_active:
+            rasengan_channel.stop()
 
     if hands:
         # Hand Sign Detection - happens if Chidori is NOT active
@@ -139,7 +142,7 @@ while True:
                     rasengan_active = False
                     # Stop all sounds on reset
                     if chidori_sound: chidori_sound.stop()
-                    if rasengan_sound: rasengan_channel.stop()
+                    if rasengan_channel.get_busy(): rasengan_channel.stop()
                     msg = "CHAKRA RESET"
                     font = cv2.FONT_HERSHEY_TRIPLEX
                     scale = 2.0
@@ -156,40 +159,41 @@ while True:
                     
                     if movement > 5: # If hand is moving/rubbing
                         rasengan_chakra += 0.8
-                        # Rasengan track while charging
-                        if rasengan_sound and not rasengan_channel.get_busy():
-                            rasengan_channel.play(rasengan_sound)
+                        # Play charging sound only if >= 20% ---
+                        if rasengan_chakra >= 20 and rasengan_charge_sfx and not rasengan_channel.get_busy():
+                            rasengan_channel.play(rasengan_charge_sfx)
                     
                     if rasengan_chakra >= 100:
                         rasengan_chakra, rasengan_active = 100, True
-                        # Loop the sound once fully formed
-                        if rasengan_sound: rasengan_channel.play(rasengan_sound, loops=-1)
+                        if rasengan_active_sfx: 
+                            rasengan_channel.stop() # Stop charge sound first
+                            rasengan_channel.play(rasengan_active_sfx, loops=-1)
                     
                     cv2.putText(img, f"CONCENTRATING CHAKRA: {int(rasengan_chakra)}%", (350, 60), 
                                 cv2.FONT_HERSHEY_TRIPLEX, 1, (255, 255, 0), 2)
                     
-                    # Percentage-wise rasengan formation
-                    # to form the rasengan between the palms (exact center between palms)
-                    mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2 
-                    t_form = cv2.getTickCount() / cv2.getTickFrequency()
-                    scale_val = rasengan_chakra / 100.0
+                    # starting rasengan formation at 20%
+                    if rasengan_chakra >= 20:
+                        mx, my = (p1[0] + p2[0]) // 2, (p1[1] + p2[1]) // 2 
+                        t_form = cv2.getTickCount() / cv2.getTickFrequency()
+                        scale_val = rasengan_chakra / 100.0
 
-                    # Formation Wind: Scaling to match final Rasengan size (~80-95 radius)
-                    for i in range(4):
-                        # Increased base radius logic so it grows smoothly into the full shell
-                        r_form = int((50 + i * 12) * scale_val)
-                        if r_form > 0:
-                            start_a = int(t_form * 600 + i * 45) % 360
-                            # for the spining wind formation between the palms
-                            cv2.ellipse(img, (mx, my), (r_form, r_form), i*24, start_a, start_a + 60, (255, 150, 0), 2)
-                    
-                    # Growing White Core: Scaled to hit 55px at 100%
-                    core_r = int(55 * scale_val)
-                    if core_r > 0:
-                        # Blow effect aura scaled
-                        cv2.circle(img, (mx, my), int(65 * scale_val), (255, 120, 50), 2)
-                        # Solid core scaled
-                        cv2.circle(img, (mx, my), core_r, (255, 255, 255), -1)
+                        # Formation Wind
+                        for i in range(4):
+                            r_form = int((50 + i * 12) * scale_val)
+                            if r_form > 0:
+                                start_a = int(t_form * 600 + i * 45) % 360
+                                cv2.ellipse(img, (mx, my), (r_form, r_form), i*24, start_a, start_a + 60, (255, 150, 0), 2)
+                        
+                        # Growing White Core
+                        core_r = int(55 * scale_val)
+                        if core_r > 0:
+                            cv2.circle(img, (mx, my), int(65 * scale_val), (255, 120, 50), 2)
+                            cv2.circle(img, (mx, my), core_r, (255, 255, 255), -1)
+                
+                # Stop sound if hands separate
+                elif dist >= 350 and not rasengan_active:
+                    if rasengan_channel.get_busy(): rasengan_channel.stop()
 
                 # fixing Tiger seal stability 
                 idx1 = hand1["lmList"][8]
@@ -233,6 +237,7 @@ while True:
 
         for hand in hands:
             lmList = hand["lmList"] 
+            # Skeletal landmarks for visualization
             for id, lm in enumerate(lmList):
                 cx, cy = lm[0], lm[1]
                 if id in [4, 8, 12, 16, 20]:
