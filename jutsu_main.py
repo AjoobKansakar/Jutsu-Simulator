@@ -4,6 +4,7 @@ import math # distance calculation to handle overlapping of hands
 import time # For combo timing
 import random # chidori lighting
 import pygame # sound effects
+import numpy as np #image manipulation
 
 # sound engine initialize
 pygame.mixer.init()
@@ -69,6 +70,12 @@ rasengan_start_time = 0   # Added to track activation start
 rasengan_duration = 8.0 
 last_p2_pos = [0, 0]      # track if hands are moving
 
+# Shadow clone jutsu variables
+clone_active = False      
+clone_start_time = 0      
+clone_duration = 8.0      
+clone_frame = None # Store snapshot for the clones
+
 # Jutsu Sequence stability
 counter = 0               
 selection_speed = 5       
@@ -95,8 +102,12 @@ while True:
     # Auto-reset logic for Chidori ( 8s timeout)
     if chidori_active:
         if time.time() - chidori_start_time > chidori_duration:
-            chidori_active, chidori_ready, chidori_hand_type = False, False, None
-            current_sequence, last_seal, combo_start_time = [], None, 0
+            chidori_active = False
+            chidori_ready = False
+            chidori_hand_type = None
+            current_sequence = []
+            last_seal = None
+            combo_start_time = 0
             if chidori_sound: chidori_sound.stop()
             
     # Auto-reset logic for Rasengan ( 8s timeout)
@@ -104,11 +115,15 @@ while True:
         if time.time() - rasengan_start_time > rasengan_duration:
             rasengan_active = False
             rasengan_chakra = 0
-            current_sequence, last_seal, combo_start_time = [], None, 0
+            current_sequence = []
+            last_seal = None
+            combo_start_time = 0
             if rasengan_channel.get_busy(): rasengan_channel.stop()
 
     elif time.time() - last_action_time > time_limit:
-        current_sequence, chidori_ready, combo_start_time = [], False, 0
+        current_sequence = []
+        chidori_ready = False
+        combo_start_time = 0
 
     # Rasengan slow decay logic so that chatra doesn't reset instantly
     if rasengan_chakra > 0 and not rasengan_active:
@@ -176,13 +191,29 @@ while True:
                 elif dist >= 350 and not rasengan_active:
                     if rasengan_channel.get_busy(): rasengan_channel.stop()
 
+                # Shadow clone seal logic
+                p_cl_l = [1, 1, 1, 0, 0] # Left Hand Pattern: [1, 1, 1, 0, 0]
+                p_cl_r_list = [[0, 1, 0, 0, 0], [0, 1, 1, 0, 0]] # Right Hand Patterns: [0, 1, 0, 0, 0] OR [0, 1, 1, 0, 0]
+                
+                # Check for either combination regardless of AI hand label stability
+                match_clone = (fingers1 == p_cl_l and fingers2 in p_cl_r_list) or \
+                              (fingers2 == p_cl_l and fingers1 in p_cl_r_list)
+                
+                if match_clone and dist < 120:
+                    msg = "SHADOW CLONE JUTSU"
+                    jutsu_active = True
+                    font = cv2.FONT_HERSHEY_TRIPLEX
+                    text_x = (1280 - cv2.getTextSize(msg, font, 2.6, 2)[0][0]) // 2
+                    cv2.putText(img, msg, (text_x, 100), font, 2.6, (255, 255, 255), 2)
+
                 # fixing Tiger seal stability 
                 idx1, idx2 = hand1["lmList"][8], hand2["lmList"][8]
                 mid1, mid2 = hand1["lmList"][12], hand2["lmList"][12]
                 dist_index = math.sqrt((idx1[0]-idx2[0])**2 + (idx1[1]-idx2[1])**2)
                 dist_middle = math.sqrt((mid1[0]-mid2[0])**2 + (mid1[1]-mid2[1])**2)
 
-                if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
+                # Tiger Seal Logic 
+                if not jutsu_active and dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
                     msg, jutsu_active, current_frame_seal = "TIGER", True, "TIGER"
                     (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
                     cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 0, 255), 2)
@@ -257,8 +288,6 @@ while True:
                 cv2.circle(img, (cx, cy), 65 + pulse, (255, 120, 50), 2)
                 cv2.circle(img, (cx, cy), 55 + pulse, (255, 255, 255), -1)
                 rasengan_drawn_this_frame = True
-                
-                # Rasengan duration timer UI 
                 rem_rasengan = max(0, rasengan_duration - (time.time() - rasengan_start_time))
                 cv2.putText(img, f"DURATION: {rem_rasengan:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
 
