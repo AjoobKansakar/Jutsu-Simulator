@@ -75,6 +75,8 @@ clone_active = False
 clone_start_time = 0      
 clone_duration = 8.0      
 clone_frame = None # Store snapshot for the clones
+clone_hold_start = 0      # track seal held duration
+clone_hold_threshold = 3.0 # Clone Seal duration threshold
 
 # Jutsu Sequence stability
 counter = 0               
@@ -120,6 +122,13 @@ while True:
             combo_start_time = 0
             if rasengan_channel.get_busy(): rasengan_channel.stop()
 
+    # Auto-reset logic for Shadow Clone ( 8s timeout)
+    elif clone_active:
+        if time.time() - clone_start_time > clone_duration:
+            clone_active = False
+            clone_frame = None
+            clone_hold_start = 0 # Reset hold timer for next use
+
     elif time.time() - last_action_time > time_limit:
         current_sequence = []
         chidori_ready = False
@@ -133,7 +142,7 @@ while True:
 
     if hands:
         # Hand Sign Detection - happens if Chidori or Rasengan is NOT active
-        if not chidori_active and not rasengan_active:
+        if not chidori_active and not rasengan_active and not clone_active:
             # checking for 2-handed seals first
             if len(hands) == 2:
                 hand1 = hands[0]
@@ -148,7 +157,7 @@ while True:
                 # Chakra Resetn logic
                 if fingers1 == [1, 1, 1, 1, 1] and fingers2 == [1, 1, 1, 1, 1] and dist > 400:
                     current_sequence, chidori_ready, last_seal, combo_start_time = [], False, None, 0
-                    rasengan_chakra, rasengan_active = 0, False
+                    rasengan_chakra, rasengan_active, clone_active = 0, False, False
                     if chidori_sound: chidori_sound.stop()
                     if rasengan_channel.get_busy(): rasengan_channel.stop()
                     msg = "CHAKRA RESET"
@@ -231,12 +240,24 @@ while True:
                     match_clone = (fingers1 == p_cl_l and fingers2 in p_cl_r_list) or \
                                   (fingers2 == p_cl_l and fingers1 in p_cl_r_list)
                     
-                    if match_clone and dist < 120:
-                        msg = "SHADOW CLONE JUTSU"
+                    # current_sequence logic to block clone seal while chidori is in progress
+                    if match_clone and dist < 120 and not current_sequence:
                         jutsu_active = True
-                        font = cv2.FONT_HERSHEY_TRIPLEX
-                        text_x = (1280 - cv2.getTextSize(msg, font, 2.6, 2)[0][0]) // 2
-                        cv2.putText(img, msg, (text_x, 100), font, 2.6, (255, 255, 255), 2)
+                        if clone_hold_start == 0:
+                            clone_hold_start = time.time()
+                        
+                        elapsed_hold = time.time() - clone_hold_start
+                        
+                        if elapsed_hold < clone_hold_threshold:
+                            msg = f"CHANNELING CLONE CHAKRA: {elapsed_hold:.1f}s"
+                            text_x = (1280 - cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 1.2, 2)[0][0]) // 2
+                            cv2.putText(img, msg, (text_x, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 255, 255), 2)
+                        else:
+                            clone_active = True
+                            clone_start_time = time.time()
+                            if rasengan_active_sfx: rasengan_channel.play(rasengan_active_sfx)
+                    else:
+                        clone_hold_start = 0
 
         for hand in hands:
             lmList, fingers = hand["lmList"], detector.fingersUp(hand)
@@ -300,23 +321,32 @@ while True:
             text_pos, text_y = (50, 500) if handType == "Left" else (980, 500), 650 if handType == "Right" else 690 
             cv2.putText(img, f'{handType}: {fingers}', text_pos, cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
-        if current_frame_seal and not chidori_active and not rasengan_active:
-            if current_frame_seal == candidate_seal: counter += 1
-            else: candidate_seal, counter = current_frame_seal, 0
-            if counter > selection_speed and current_frame_seal != last_seal:
-                current_sequence.append(current_frame_seal)
-                last_seal, last_action_time = current_frame_seal, time.time()
-                if current_sequence[-3:] == ["HORSE", "TIGER", "SERPENT"]: chidori_ready, combo_start_time = True, 0 
-        
-        if not chidori_active and not chidori_ready and not rasengan_active:
-            cv2.putText(img, f"CHAKRA: {' -> '.join(current_sequence[-3:])}", (20, 50), cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 2)
-            if combo_start_time != 0:
-                rem_time = max(0, time_limit - (time.time() - combo_start_time))
-                cv2.putText(img, f"TIMER: {rem_time:.1f}s", (1000, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 255, 255), 2)
-        if chidori_ready and not chidori_active:
-            ready_msg = " Chidori "
-            (rw, rh), _ = cv2.getTextSize(ready_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
-            cv2.putText(img, ready_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
+    # Shadow clone logic
+    if clone_active:
+        # Display the black duration timer for Shadow Clone active state
+        rem_clone = max(0, clone_duration - (time.time() - clone_start_time))
+        cv2.putText(img, f"DURATION: {rem_clone:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
+        msg_active = "SHADOW CLONE JUTSU"
+        text_x_active = (1280 - cv2.getTextSize(msg_active, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)[0][0]) // 2
+        cv2.putText(img, msg_active, (text_x_active, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 255), 2)
+
+    if current_frame_seal and not chidori_active and not rasengan_active:
+        if current_frame_seal == candidate_seal: counter += 1
+        else: candidate_seal, counter = current_frame_seal, 0
+        if counter > selection_speed and current_frame_seal != last_seal:
+            current_sequence.append(current_frame_seal)
+            last_seal, last_action_time = current_frame_seal, time.time()
+            if current_sequence[-3:] == ["HORSE", "TIGER", "SERPENT"]: chidori_ready, combo_start_time = True, 0 
+    
+    if not chidori_active and not chidori_ready and not rasengan_active and not clone_active:
+        cv2.putText(img, f"CHAKRA: {' -> '.join(current_sequence[-3:])}", (20, 50), cv2.FONT_HERSHEY_PLAIN, 2, (255, 255, 255), 2)
+        if combo_start_time != 0:
+            rem_time = max(0, time_limit - (time.time() - combo_start_time))
+            cv2.putText(img, f"TIMER: {rem_time:.1f}s", (1000, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 255, 255), 2)
+    if chidori_ready and not chidori_active:
+        ready_msg = " Chidori "
+        (rw, rh), _ = cv2.getTextSize(ready_msg, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)
+        cv2.putText(img, ready_msg, ((1280 - rw) // 2, 60), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 0), 2)
 
     cv2.imshow("Naruto-Jutsu Simulator", img)
     if cv2.waitKey(1) & 0xFF == ord('q'):
