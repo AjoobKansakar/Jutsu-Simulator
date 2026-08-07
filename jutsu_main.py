@@ -5,6 +5,8 @@ import time # For combo timing
 import random # chidori lighting
 import pygame # sound effects
 import numpy as np #image manipulation
+import os # checking if the segmentation model file exists
+import mediapipe as mp # person segmentation for solid clone cutouts
 
 # sound engine initialize
 pygame.mixer.init()
@@ -18,6 +20,73 @@ except:
     chidori_sound = None
     rasengan_charge_sfx = None
     rasengan_active_sfx = None
+
+# Shadow clone person segmentation setup
+segmenter = None
+SEGMENTER_MODEL_PATH = "selfie_segmenter.tflite"
+if os.path.exists(SEGMENTER_MODEL_PATH):
+    try:
+        BaseOptions = mp.tasks.BaseOptions
+        ImageSegmenter = mp.tasks.vision.ImageSegmenter
+        ImageSegmenterOptions = mp.tasks.vision.ImageSegmenterOptions
+        VisionRunningMode = mp.tasks.vision.RunningMode
+
+        segmenter_options = ImageSegmenterOptions(
+            base_options=BaseOptions(model_asset_path=SEGMENTER_MODEL_PATH),
+            running_mode=VisionRunningMode.IMAGE,
+            output_confidence_masks=True)
+        segmenter = ImageSegmenter.create_from_options(segmenter_options)
+        print("Shadow Clone: person segmentation model loaded - solid clone cutouts enabled.")
+    except Exception as e:
+        segmenter = None
+        print(f"Shadow Clone: failed to load {SEGMENTER_MODEL_PATH} ({e}). Using blend fallback.")
+else:
+    print(f"Shadow Clone: {SEGMENTER_MODEL_PATH} not found in this folder - using blend fallback.")
+    print("For solid (non-transparent) clones, download it from:")
+    print("https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite")
+
+
+def get_person_mask(frame_bgr):
+    """Shadow Clone helper: returns a soft-edged 0-255 single-channel mask that
+    isolates you from the background using MediaPipe's Image Segmenter.
+    Returns None if the model isn't loaded, so the caller can fall back
+    to the softened blend method instead of crashing."""
+    if segmenter is None:
+        return None
+    try:
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = segmenter.segment(mp_image)
+        person_conf = result.confidence_masks[0].numpy_view()  # 0..1 foreground confidence
+        mask = (person_conf * 255).astype(np.uint8)
+        mask = cv2.GaussianBlur(mask, (15, 15), 0)  # feather the edges so the paste blends in
+        return mask
+    except Exception:
+        return None
+
+
+def draw_smoke_cloud(img, center, progress):
+    """Shadow Clone helper: draws a dissipating puff-of-smoke cloud, used for the
+    'poof' moment the clone appears in, like the anime. progress goes from
+    0 (jutsu just triggered) to 1 (smoke fully cleared, clone fully visible)."""
+    cx, cy = center
+    max_radius = 170
+    radius = int(45 + max_radius * progress)
+    alpha = max(0.0, 0.8 * (1 - progress))
+    if alpha <= 0.02:
+        return
+    overlay = img.copy()
+    num_blobs = 12
+    for i in range(num_blobs):
+        blob_angle = (i / num_blobs) * 2 * math.pi + progress * 2
+        blob_dist = radius * random.uniform(0.25, 1.0)
+        bx = int(cx + blob_dist * math.cos(blob_angle))
+        by = int(cy + blob_dist * math.sin(blob_angle) * 0.75)  # flatten vertically a bit
+        blob_r = random.randint(28, 60)
+        shade = random.randint(200, 245)
+        cv2.circle(overlay, (bx, by), blob_r, (shade, shade, shade), cv2.FILLED)
+    img[:] = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+
 
 # Chidori lighting effect function
 def draw_jagged_bolt(img, start, end, color, thickness, branching=False):
@@ -77,6 +146,8 @@ clone_duration = 8.0
 clone_frame = None # Store snapshot for the clones
 clone_hold_start = 0      # track seal held duration
 clone_hold_threshold = 2.0 # Shadow clone seal duration threshold
+clone_poof_duration = 0.9 # How long the smoke/poof reveal transition lasts once summoned
+clone_offset = 340        # Horizontal distance (px) each clone stands from you
 
 # Jutsu Sequence stability
 counter = 0               
@@ -323,22 +394,42 @@ while True:
 
     # Live Shadow Clone logic
     if clone_active:
+        elapsed_clone = time.time() - clone_start_time
         # Snapshot of live camera frame
         clone_src = img.copy()
-        
-        # Reseting the main image 
-        img = cv2.addWeighted(clone_src, 0.5, clone_src, 0, 0)
-        
-        for offset in [-380, 380]:
+
+        # Cutting out just the user so the clones look SOLID 
+        person_mask = get_person_mask(clone_src)
+
+        # How much of the clone is "revealed" through the smoke right now (0 -> 1)
+        reveal = min(1.0, elapsed_clone / clone_poof_duration) if clone_poof_duration > 0 else 1.0
+
+        for offset in [-clone_offset, clone_offset]:
             # Translation matrix
             M = np.float32([[1, 0, offset], [0, 1, 0]])
-            # Shift the clean live frame
+            # Shift the clean live frame to where this clone should stand
             live_clone = cv2.warpAffine(clone_src, M, (1280, 720))
-            # Blending: Add 25% brightness from each clone. 
-            # Total sum: 50% (original) + 25% (left) + 25% (right) = 100% (Normal Brightness)
-            img = cv2.addWeighted(img, 1.0, live_clone, 0.25, 0)
-            
-        rem_clone = max(0, clone_duration - (time.time() - clone_start_time))
+
+            if person_mask is not None:
+                # Solid cutout paste
+                shifted_mask = cv2.warpAffine(person_mask, M, (1280, 720)).astype(np.float32) / 255.0
+                shifted_mask *= reveal  # fade the clone in as the smoke clears
+                mask3 = cv2.merge([shifted_mask, shifted_mask, shifted_mask])
+                img = (img.astype(np.float32) * (1 - mask3) + live_clone.astype(np.float32) * mask3).astype(np.uint8)
+            else:
+                img = cv2.addWeighted(img, 1.0, live_clone, 0.6 * reveal, 0)
+
+            # Smoke effect plays over each clone's spot while it materializes
+            if elapsed_clone < clone_poof_duration:
+                puff_cx = 640 + offset
+                puff_cy = 380
+                draw_smoke_cloud(img, (puff_cx, puff_cy), elapsed_clone / clone_poof_duration)
+
+        # Big central poof at the moment of activation, like the anime screen-fill puff
+        if elapsed_clone < clone_poof_duration:
+            draw_smoke_cloud(img, (640, 380), elapsed_clone / clone_poof_duration)
+
+        rem_clone = max(0, clone_duration - elapsed_clone)
         cv2.putText(img, f"DURATION: {rem_clone:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
         msg_active = "SHADOW CLONE JUTSU ACTIVE"
         text_x_active = (1280 - cv2.getTextSize(msg_active, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)[0][0]) // 2
