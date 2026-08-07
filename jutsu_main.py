@@ -76,7 +76,7 @@ clone_start_time = 0
 clone_duration = 8.0      
 clone_frame = None # Store snapshot for the clones
 clone_hold_start = 0      # track seal held duration
-clone_hold_threshold = 3.0 # Clone Seal duration threshold
+clone_hold_threshold = 2.0 # Shadow clone seal duration threshold
 
 # Jutsu Sequence stability
 counter = 0               
@@ -142,7 +142,7 @@ while True:
 
     if hands:
         # Hand Sign Detection - happens if Chidori or Rasengan is NOT active
-        if not chidori_active and not rasengan_active and not clone_active:
+        if not chidori_active and not rasengan_active:
             # checking for 2-handed seals first
             if len(hands) == 2:
                 hand1 = hands[0]
@@ -321,12 +321,26 @@ while True:
             text_pos, text_y = (50, 500) if handType == "Left" else (980, 500), 650 if handType == "Right" else 690 
             cv2.putText(img, f'{handType}: {fingers}', text_pos, cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 3)
 
-    # Shadow clone logic
+    # Live Shadow Clone logic
     if clone_active:
-        # Display the black duration timer for Shadow Clone active state
+        # Snapshot of live camera frame
+        clone_src = img.copy()
+        
+        # Reseting the main image 
+        img = cv2.addWeighted(clone_src, 0.5, clone_src, 0, 0)
+        
+        for offset in [-380, 380]:
+            # Translation matrix
+            M = np.float32([[1, 0, offset], [0, 1, 0]])
+            # Shift the clean live frame
+            live_clone = cv2.warpAffine(clone_src, M, (1280, 720))
+            # Blending: Add 25% brightness from each clone. 
+            # Total sum: 50% (original) + 25% (left) + 25% (right) = 100% (Normal Brightness)
+            img = cv2.addWeighted(img, 1.0, live_clone, 0.25, 0)
+            
         rem_clone = max(0, clone_duration - (time.time() - clone_start_time))
         cv2.putText(img, f"DURATION: {rem_clone:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
-        msg_active = "SHADOW CLONE JUTSU"
+        msg_active = "SHADOW CLONE JUTSU ACTIVE"
         text_x_active = (1280 - cv2.getTextSize(msg_active, cv2.FONT_HERSHEY_TRIPLEX, 1.5, 2)[0][0]) // 2
         cv2.putText(img, msg_active, (text_x_active, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.5, (255, 255, 255), 2)
 
