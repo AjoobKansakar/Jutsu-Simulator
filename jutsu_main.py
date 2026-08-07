@@ -48,9 +48,7 @@ else:
 
 def get_person_mask(frame_bgr):
     """Shadow Clone helper: returns a soft-edged 0-255 single-channel mask that
-    isolates you from the background using MediaPipe's Image Segmenter.
-    Returns None if the model isn't loaded, so the caller can fall back
-    to the softened blend method instead of crashing."""
+    isolates you from the background using MediaPipe's Image Segmenter."""
     if segmenter is None:
         return None
     try:
@@ -66,9 +64,7 @@ def get_person_mask(frame_bgr):
 
 
 def draw_smoke_cloud(img, center, progress):
-    """Shadow Clone helper: draws a dissipating puff-of-smoke cloud, used for the
-    'poof' moment the clone appears in, like the anime. progress goes from
-    0 (jutsu just triggered) to 1 (smoke fully cleared, clone fully visible)."""
+    """Shadow Clone helper: draws a dissipating puff-of-smoke cloud."""
     cx, cy = center
     max_radius = 170
     radius = int(45 + max_radius * progress)
@@ -271,14 +267,40 @@ while True:
                 elif dist >= 350 and not rasengan_active:
                     if rasengan_channel.get_busy(): rasengan_channel.stop()
 
+                # Shadow clone seal detection
+                p_cl_l = [1, 1, 1, 0, 0] 
+                p_cl_r_list = [[0, 1, 0, 0, 0], [0, 1, 1, 0, 0]]
+                match_clone = (fingers1 == p_cl_l and fingers2 in p_cl_r_list) or \
+                              (fingers2 == p_cl_l and fingers1 in p_cl_r_list)
+                
+                # Seal Block Logic: If matching clone seal and no chidori sequence started..
+                if match_clone and dist < 120 and not current_sequence:
+                    jutsu_active = True # blocks other seal detection
+                    if clone_hold_start == 0:
+                        clone_hold_start = time.time()
+                    
+                    elapsed_hold = time.time() - clone_hold_start
+                    
+                    if elapsed_hold < clone_hold_threshold:
+                        # Seal Block logic: Displaying clone seal timer blocks other seals
+                        msg = f"CHANNELING CLONE CHAKRA: {elapsed_hold:.1f}s"
+                        text_x = (1280 - cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 1.2, 2)[0][0]) // 2
+                        cv2.putText(img, msg, (text_x, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 255, 255), 2)
+                    else:
+                        clone_active = True
+                        clone_start_time = time.time()
+                        if rasengan_active_sfx: rasengan_channel.play(rasengan_active_sfx)
+                else:
+                    clone_hold_start = 0
+
                 # fixing Tiger seal stability 
                 idx1, idx2 = hand1["lmList"][8], hand2["lmList"][8]
                 mid1, mid2 = hand1["lmList"][12], hand2["lmList"][12]
                 dist_index = math.sqrt((idx1[0]-idx2[0])**2 + (idx1[1]-idx2[1])**2)
                 dist_middle = math.sqrt((mid1[0]-mid2[0])**2 + (mid1[1]-mid2[1])**2)
 
-                # Tiger Seal Logic 
-                if dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
+                # Tiger Seal Logic (Only triggers if not channeling clone chakra)
+                if not jutsu_active and dist_index < 60 and dist_middle < 60 and fingers1[1] == 1 and fingers2[1] == 1:
                     msg, jutsu_active, current_frame_seal = "TIGER", True, "TIGER"
                     (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
                     cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 0, 255), 2)
@@ -287,7 +309,7 @@ while True:
                             cx_t, cy_t = h_data["lmList"][id][0], h_data["lmList"][id][1]
                             cv2.circle(img, (cx_t, cy_t), 20, (0, 0, 255), cv2.FILLED)
 
-                elif fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
+                elif not jutsu_active and fingers1[1] == 1 and fingers1[2:] == [0, 0, 0] and \
                     fingers2[1] == 1 and fingers2[2:] == [0, 0, 0] and dist_index < 100:
                     msg, jutsu_active, current_frame_seal = "HORSE", True, "HORSE"
                     if not current_sequence: combo_start_time = time.time()
@@ -296,39 +318,12 @@ while True:
                     for h_data in [hand1, hand2]:
                         cv2.circle(img, (h_data["lmList"][8][0], h_data["lmList"][8][1]), 20, (255, 255, 0), cv2.FILLED)
 
-                elif fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 60: 
+                elif not jutsu_active and fingers1 == [0, 0, 0, 0, 0] and fingers2 == [0, 0, 0, 0, 0] and dist_index < 60: 
                     msg, jutsu_active, current_frame_seal = "SERPENT", True, "SERPENT"
                     (w, h), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 2.6, 2)
                     cv2.putText(img, msg, ((1280 - w) // 2, 100), cv2.FONT_HERSHEY_TRIPLEX, 2.6, (0, 255, 0), 2)
                     for h_data in [hand1, hand2]:
                         cv2.circle(img, (h_data["lmList"][0][0], h_data["lmList"][0][1]), 30, (0, 255, 0), cv2.FILLED)
-
-                # Shadow clone seal logic 
-                else:
-                    p_cl_l = [1, 1, 1, 0, 0]  # Left hand
-                    p_cl_r_list = [[0, 1, 0, 0, 0], [0, 1, 1, 0, 0]] # Right hand
-                    
-                    match_clone = (fingers1 == p_cl_l and fingers2 in p_cl_r_list) or \
-                                  (fingers2 == p_cl_l and fingers1 in p_cl_r_list)
-                    
-                    # current_sequence logic to block clone seal while chidori is in progress
-                    if match_clone and dist < 120 and not current_sequence:
-                        jutsu_active = True
-                        if clone_hold_start == 0:
-                            clone_hold_start = time.time()
-                        
-                        elapsed_hold = time.time() - clone_hold_start
-                        
-                        if elapsed_hold < clone_hold_threshold:
-                            msg = f"CHANNELING CLONE CHAKRA: {elapsed_hold:.1f}s"
-                            text_x = (1280 - cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 1.2, 2)[0][0]) // 2
-                            cv2.putText(img, msg, (text_x, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 255, 255), 2)
-                        else:
-                            clone_active = True
-                            clone_start_time = time.time()
-                            if rasengan_active_sfx: rasengan_channel.play(rasengan_active_sfx)
-                    else:
-                        clone_hold_start = 0
 
         for hand in hands:
             lmList, fingers = hand["lmList"], detector.fingersUp(hand)
@@ -395,37 +390,23 @@ while True:
     # Live Shadow Clone logic
     if clone_active:
         elapsed_clone = time.time() - clone_start_time
-        # Snapshot of live camera frame
         clone_src = img.copy()
-
-        # Cutting out just the user so the clones look SOLID 
         person_mask = get_person_mask(clone_src)
-
-        # How much of the clone is "revealed" through the smoke right now (0 -> 1)
         reveal = min(1.0, elapsed_clone / clone_poof_duration) if clone_poof_duration > 0 else 1.0
 
         for offset in [-clone_offset, clone_offset]:
-            # Translation matrix
             M = np.float32([[1, 0, offset], [0, 1, 0]])
-            # Shift the clean live frame to where this clone should stand
             live_clone = cv2.warpAffine(clone_src, M, (1280, 720))
-
             if person_mask is not None:
-                # Solid cutout paste
                 shifted_mask = cv2.warpAffine(person_mask, M, (1280, 720)).astype(np.float32) / 255.0
-                shifted_mask *= reveal  # fade the clone in as the smoke clears
+                shifted_mask *= reveal
                 mask3 = cv2.merge([shifted_mask, shifted_mask, shifted_mask])
                 img = (img.astype(np.float32) * (1 - mask3) + live_clone.astype(np.float32) * mask3).astype(np.uint8)
             else:
                 img = cv2.addWeighted(img, 1.0, live_clone, 0.6 * reveal, 0)
-
-            # Smoke effect plays over each clone's spot while it materializes
             if elapsed_clone < clone_poof_duration:
-                puff_cx = 640 + offset
-                puff_cy = 380
-                draw_smoke_cloud(img, (puff_cx, puff_cy), elapsed_clone / clone_poof_duration)
+                draw_smoke_cloud(img, (640 + offset, 380), elapsed_clone / clone_poof_duration)
 
-        # Big central poof at the moment of activation, like the anime screen-fill puff
         if elapsed_clone < clone_poof_duration:
             draw_smoke_cloud(img, (640, 380), elapsed_clone / clone_poof_duration)
 
