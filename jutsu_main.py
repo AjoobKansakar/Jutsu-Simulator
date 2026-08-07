@@ -9,17 +9,23 @@ import os # checking if the segmentation model file exists
 import mediapipe as mp # person segmentation for solid clone cutouts
 
 # sound engine initialize
+pygame.mixer.pre_init(44100, -16, 2, 512)
 pygame.mixer.init()
 try:
     chidori_sound = pygame.mixer.Sound("chidori.mp3") # Chidori Sound track
     rasengan_charge_sfx = pygame.mixer.Sound("rasengan_charging.mp3") # Rasengan charge sound track
     rasengan_active_sfx = pygame.mixer.Sound("rasengan_activated.mp3") # Rasengan active sound track
+    shadow_clone_sfx = pygame.mixer.Sound("shadowClone.mp3") # Shadow clone sound track
     rasengan_channel = pygame.mixer.Channel(1) # Separate channel for Rasengan
+    clone_channel = pygame.mixer.Channel(2)    # FIXED: Separate channel for Shadow Clone clarity
 except:
     print("Sound files not found. Please check the name and the location of chidori.mp3 and rasengan.mp3 in the folder.")
     chidori_sound = None
     rasengan_charge_sfx = None
     rasengan_active_sfx = None
+    shadow_clone_sfx = None
+    rasengan_channel = None
+    clone_channel = None
 
 # Shadow clone person segmentation setup
 segmenter = None
@@ -187,7 +193,7 @@ while True:
             current_sequence = []
             last_seal = None
             combo_start_time = 0
-            if rasengan_channel.get_busy(): rasengan_channel.stop()
+            if rasengan_channel and rasengan_channel.get_busy(): rasengan_channel.stop()
 
     # Auto-reset logic for Shadow Clone ( 8s timeout)
     elif clone_active:
@@ -204,7 +210,7 @@ while True:
     # Rasengan slow decay logic so that chatra doesn't reset instantly
     if rasengan_chakra > 0 and not rasengan_active:
         rasengan_chakra -= 0.2 
-        if rasengan_chakra < 20 and rasengan_channel.get_busy():
+        if rasengan_chakra < 20 and rasengan_channel and rasengan_channel.get_busy():
             rasengan_channel.stop()
 
     if hands:
@@ -226,7 +232,8 @@ while True:
                     current_sequence, chidori_ready, last_seal, combo_start_time = [], False, None, 0
                     rasengan_chakra, rasengan_active, clone_active = 0, False, False
                     if chidori_sound: chidori_sound.stop()
-                    if rasengan_channel.get_busy(): rasengan_channel.stop()
+                    if rasengan_channel and rasengan_channel.get_busy(): rasengan_channel.stop()
+                    if clone_channel and clone_channel.get_busy(): clone_channel.stop()
                     msg = "CHAKRA RESET"
                     font = cv2.FONT_HERSHEY_TRIPLEX
                     text_x = (1280 - cv2.getTextSize(msg, font, 2.0, 2)[0][0]) // 2
@@ -238,13 +245,13 @@ while True:
                     last_p2_pos = p2
                     if movement > 5: 
                         rasengan_chakra += 0.8
-                        if rasengan_chakra >= 20 and rasengan_charge_sfx and not rasengan_channel.get_busy():
+                        if rasengan_chakra >= 20 and rasengan_charge_sfx and rasengan_channel and not rasengan_channel.get_busy():
                             rasengan_channel.play(rasengan_charge_sfx)
                     
                     if rasengan_chakra >= 100:
                         rasengan_chakra, rasengan_active = 100, True
                         rasengan_start_time = time.time() # Set time of activation
-                        if rasengan_active_sfx: 
+                        if rasengan_active_sfx and rasengan_channel: 
                             rasengan_channel.stop() 
                             rasengan_channel.play(rasengan_active_sfx, loops=-1)
                     
@@ -265,7 +272,7 @@ while True:
                             cv2.circle(img, (mx, my), int(65 * scale_val), (255, 120, 50), 2)
                             cv2.circle(img, (mx, my), core_r, (255, 255, 255), -1)
                 elif dist >= 350 and not rasengan_active:
-                    if rasengan_channel.get_busy(): rasengan_channel.stop()
+                    if rasengan_channel and rasengan_channel.get_busy(): rasengan_channel.stop()
 
                 # Shadow clone seal detection
                 p_cl_l = [1, 1, 1, 0, 0] 
@@ -287,9 +294,10 @@ while True:
                         text_x = (1280 - cv2.getTextSize(msg, cv2.FONT_HERSHEY_TRIPLEX, 1.2, 2)[0][0]) // 2
                         cv2.putText(img, msg, (text_x, 100), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (255, 255, 255), 2)
                     else:
+                        # Activate Jutsu and trigger the dedicated Shadow Clone SFX on its own channel
                         clone_active = True
                         clone_start_time = time.time()
-                        if rasengan_active_sfx: rasengan_channel.play(rasengan_active_sfx)
+                        if shadow_clone_sfx and clone_channel: clone_channel.play(shadow_clone_sfx)
                 else:
                     clone_hold_start = 0
 
