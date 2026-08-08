@@ -38,4 +38,4 @@ A real-time Computer Vision application that allows users to perform iconic Naru
    ```bash
    pip install opencv-python mediapipe pygame cvzone numpy
 
-# Developed by AjoobKansakar
+### Developed by AjoobKansakar
