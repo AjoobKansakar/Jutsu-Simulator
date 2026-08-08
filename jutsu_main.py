@@ -70,23 +70,38 @@ def get_person_mask(frame_bgr):
 
 
 def draw_smoke_cloud(img, center, progress):
-    """Shadow Clone helper: draws a dissipating puff-of-smoke cloud."""
+    """Shadow Clone helper: draws an anime-style cartoon poof cloud (a fixed
+    cluster of overlapping circles forming a rounded cumulus silhouette,
+    white body + soft blue shading), instead of a flat blob of gray circles.
+    progress: 0 = cloud just triggered (fully solid), 1 = fully dissipated."""
     cx, cy = center
-    max_radius = 170
-    radius = int(45 + max_radius * progress)
-    alpha = max(0.0, 0.8 * (1 - progress))
+    alpha = max(0.0, 1.0 - progress)  # fully opaque at the start, fades out completely
     if alpha <= 0.02:
         return
+    base_r = int(60 + 55 * progress)  # cloud swells slightly as it dissipates, like real smoke
+
+    # Fixed cluster layout (not random) so the cloud reads as one solid poof
+    # shape every frame, instead of flickering scattered dots.
+    blob_layout = [
+        (0, 0, 1.00), (-1.0, -0.30, 0.72), (1.0, -0.30, 0.72),
+        (-1.7, 0.15, 0.55), (1.7, 0.15, 0.55),
+        (0.0, -0.85, 0.68), (-0.55, 0.55, 0.60), (0.55, 0.55, 0.60),
+    ]
+
     overlay = img.copy()
-    num_blobs = 12
-    for i in range(num_blobs):
-        blob_angle = (i / num_blobs) * 2 * math.pi + progress * 2
-        blob_dist = radius * random.uniform(0.25, 1.0)
-        bx = int(cx + blob_dist * math.cos(blob_angle))
-        by = int(cy + blob_dist * math.sin(blob_angle) * 0.75)  # flatten vertically a bit
-        blob_r = random.randint(28, 60)
-        shade = random.randint(200, 245)
-        cv2.circle(overlay, (bx, by), blob_r, (shade, shade, shade), cv2.FILLED)
+    # Soft blue-grey shadow pass (slightly offset), giving the cloud edges depth
+    for ox, oy, s in blob_layout:
+        r = max(4, int(base_r * s))
+        cv2.circle(overlay, (int(cx + ox * base_r) + 6, int(cy + oy * base_r) + 8), r, (215, 190, 170), cv2.FILLED)
+    # Light blue outline pass, matching the reference cloud art
+    for ox, oy, s in blob_layout:
+        r = max(4, int(base_r * s)) + 4
+        cv2.circle(overlay, (int(cx + ox * base_r), int(cy + oy * base_r)), r, (235, 195, 140), cv2.FILLED)
+    # White cloud body on top
+    for ox, oy, s in blob_layout:
+        r = max(4, int(base_r * s))
+        cv2.circle(overlay, (int(cx + ox * base_r), int(cy + oy * base_r)), r, (250, 250, 250), cv2.FILLED)
+
     img[:] = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
 
@@ -402,21 +417,42 @@ while True:
         person_mask = get_person_mask(clone_src)
         reveal = min(1.0, elapsed_clone / clone_poof_duration) if clone_poof_duration > 0 else 1.0
 
-        for offset in [-clone_offset, clone_offset]:
-            M = np.float32([[1, 0, offset], [0, 1, 0]])
+
+        # 6 clone formation left/right and scaled down + raised 
+        clone_transforms = [
+            {"dx": -260, "dy": -20, "scale": 0.92},
+            {"dx":  260, "dy": -20, "scale": 0.92},
+            {"dx": -470, "dy": -45, "scale": 0.80},
+            {"dx":  470, "dy": -45, "scale": 0.80},
+            {"dx": -660, "dy": -65, "scale": 0.68},
+            {"dx":  660, "dy": -65, "scale": 0.68},
+        ]
+
+        for t in clone_transforms:
+            # Scale about the feet (bottom-center) so every clone stays grounded
+            # on the same floor line while shrinking, like it's standing further back.
+            M = cv2.getRotationMatrix2D((640, 720), 0, t["scale"])
+            M[0, 2] += t["dx"]
+            M[1, 2] += t["dy"]
             live_clone = cv2.warpAffine(clone_src, M, (1280, 720))
+
             if person_mask is not None:
                 shifted_mask = cv2.warpAffine(person_mask, M, (1280, 720)).astype(np.float32) / 255.0
                 shifted_mask *= reveal
                 mask3 = cv2.merge([shifted_mask, shifted_mask, shifted_mask])
                 img = (img.astype(np.float32) * (1 - mask3) + live_clone.astype(np.float32) * mask3).astype(np.uint8)
             else:
-                img = cv2.addWeighted(img, 1.0, live_clone, 0.6 * reveal, 0)
-            if elapsed_clone < clone_poof_duration:
-                draw_smoke_cloud(img, (640 + offset, 380), elapsed_clone / clone_poof_duration)
+                img = cv2.addWeighted(img, 1.0, live_clone, 0.55 * reveal, 0)
 
-        if elapsed_clone < clone_poof_duration:
-            draw_smoke_cloud(img, (640, 380), elapsed_clone / clone_poof_duration)
+            # Smoke effect on the clones 
+            if elapsed_clone < clone_poof_duration:
+                puff_pt = M @ np.array([640, 380, 1.0])
+                draw_smoke_cloud(img, (int(puff_pt[0]), int(puff_pt[1])), elapsed_clone / clone_poof_duration)
+
+        # Rendering all the clones behind the original body
+        if person_mask is not None:
+            real_mask3 = cv2.merge([person_mask, person_mask, person_mask]).astype(np.float32) / 255.0
+            img = (img.astype(np.float32) * (1 - real_mask3) + clone_src.astype(np.float32) * real_mask3).astype(np.uint8)
 
         rem_clone = max(0, clone_duration - elapsed_clone)
         cv2.putText(img, f"DURATION: {rem_clone:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
