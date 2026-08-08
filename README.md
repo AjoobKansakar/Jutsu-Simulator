@@ -16,7 +16,7 @@ A real-time Computer Vision application that allows users to perform iconic Naru
 *   **VFX:** A high-speed rotating chakra shell consisting of 15+ overlapping energy streams and a pulsing white core.
 *   **SFX:** Wind-tunnel charging audio that transitions into a high-density energy hum at 100%.
 
-### 3. Shadow Clone Jutsu (
+### 3. Shadow Clone Jutsu 
 *   **Activation:** Cross your fingers to form the Clone Seal and hold for **2 seconds**.
 *   **Mechanic:** Utilizes AI Selfie Segmentation to "cut out" the user and duplicate them in real-time.
 *   **VFX:** Animated smoke clouds that rise from the ground to reveal live-moving clones positioned behind the original user.
