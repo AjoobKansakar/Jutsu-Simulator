@@ -63,44 +63,61 @@ def get_person_mask(frame_bgr):
         result = segmenter.segment(mp_image)
         person_conf = result.confidence_masks[0].numpy_view()  # 0..1 foreground confidence
         mask = (person_conf * 255).astype(np.uint8)
-        mask = cv2.GaussianBlur(mask, (15, 15), 0)  # feather the edges so the paste blends in
+        # Shadow clone Mask using raw confidence to make the clones look real
+        _, mask = cv2.threshold(mask, 130, 255, cv2.THRESH_BINARY)
+        mask = cv2.GaussianBlur(mask, (9, 9), 0)
         return mask
     except Exception:
         return None
 
 
-def draw_smoke_cloud(img, center, progress):
-    """Shadow Clone helper: draws an anime-style cartoon poof cloud (a fixed
-    cluster of overlapping circles forming a rounded cumulus silhouette,
-    white body + soft blue shading), instead of a flat blob of gray circles.
-    progress: 0 = cloud just triggered (fully solid), 1 = fully dissipated."""
-    cx, cy = center
-    alpha = max(0.0, 1.0 - progress)  # fully opaque at the start, fades out completely
+def draw_smoke_cloud(img, center, progress, ground_y=700):
+    """Shadow Clone helper: draws a Smoke that RISES from the ground
+    (ground_y) up into a bumpy cartoon cloud cap at 'center', then dissipates
+    -- instead of a static cloud that just fades in place.
+    progress: 0 = just triggered (plume starts at the ground),
+              0.5 = plume has fully risen, cap fully bloomed,
+              1.0 = fully dissipated."""
+    cx, cap_y = center
+
+    grow = min(1.0, progress / 0.5)   # 1st half smoke effect: rises from ground to its full height
+    fade = max(0.0, (progress - 0.5) / 0.5) # 2nd half smoke effect: fades away effect
+    alpha = max(0.0, 1.0 - fade)
     if alpha <= 0.02:
         return
-    base_r = int(60 + 55 * progress)  # cloud swells slightly as it dissipates, like real smoke
 
-    # Fixed cluster layout (not random) so the cloud reads as one solid poof
-    # shape every frame, instead of flickering scattered dots.
+    current_top = ground_y - (ground_y - cap_y) * grow  # current height of the rising column
+    base_r = int(55 + 45 * grow)  # cloud cap swells as it finishes rising
+
+    overlay = img.copy()
+
+    # Rising smoke effect 
+    steps = 10
+    for i in range(steps):
+        f = i / steps
+        y = int(ground_y - (ground_y - current_top) * f)
+        half_w = max(3, int(base_r * (0.22 + 0.55 * f)))
+        shade = 248 - int(12 * (1 - f))
+        cv2.ellipse(overlay, (cx, y), (half_w, max(6, int(half_w * 0.55))), 0, 0, 360, (shade, shade, shade), cv2.FILLED)
+    # cluster layout, to make smoke effect look solid rather then a scatter dots
     blob_layout = [
         (0, 0, 1.00), (-1.0, -0.30, 0.72), (1.0, -0.30, 0.72),
         (-1.7, 0.15, 0.55), (1.7, 0.15, 0.55),
         (0.0, -0.85, 0.68), (-0.55, 0.55, 0.60), (0.55, 0.55, 0.60),
     ]
 
-    overlay = img.copy()
     # Soft blue-grey shadow pass (slightly offset), giving the cloud edges depth
     for ox, oy, s in blob_layout:
         r = max(4, int(base_r * s))
-        cv2.circle(overlay, (int(cx + ox * base_r) + 6, int(cy + oy * base_r) + 8), r, (215, 190, 170), cv2.FILLED)
+        cv2.circle(overlay, (int(cx + ox * base_r) + 6, int(current_top + oy * base_r) + 8), r, (215, 190, 170), cv2.FILLED)
     # Light blue outline pass, matching the reference cloud art
     for ox, oy, s in blob_layout:
         r = max(4, int(base_r * s)) + 4
-        cv2.circle(overlay, (int(cx + ox * base_r), int(cy + oy * base_r)), r, (235, 195, 140), cv2.FILLED)
+        cv2.circle(overlay, (int(cx + ox * base_r), int(current_top + oy * base_r)), r, (235, 195, 140), cv2.FILLED)
     # White cloud body on top
     for ox, oy, s in blob_layout:
         r = max(4, int(base_r * s))
-        cv2.circle(overlay, (int(cx + ox * base_r), int(cy + oy * base_r)), r, (250, 250, 250), cv2.FILLED)
+        cv2.circle(overlay, (int(cx + ox * base_r), int(current_top + oy * base_r)), r, (250, 250, 250), cv2.FILLED)
 
     img[:] = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
@@ -163,7 +180,7 @@ clone_duration = 8.0
 clone_frame = None # Store snapshot for the clones
 clone_hold_start = 0      # track seal held duration
 clone_hold_threshold = 2.0 # Shadow clone seal duration threshold
-clone_poof_duration = 0.9 # How long the smoke/poof reveal transition lasts once summoned
+clone_poof_duration = 1.4 # Smoke effect Duration
 clone_offset = 340        # Horizontal distance (px) each clone stands from you
 
 # Jutsu Sequence stability
@@ -415,10 +432,13 @@ while True:
         elapsed_clone = time.time() - clone_start_time
         clone_src = img.copy()
         person_mask = get_person_mask(clone_src)
-        reveal = min(1.0, elapsed_clone / clone_poof_duration) if clone_poof_duration > 0 else 1.0
+        # smoke --> clone transaction logic
+        poof_mid = clone_poof_duration * 0.5
+        reveal = max(0.0, (elapsed_clone - poof_mid) / poof_mid) if poof_mid > 0 else 1.0
+        reveal = min(1.0, reveal)
 
 
-        # 6 clone formation left/right and scaled down + raised 
+        # clone formation left/right and scaled down + raised 
         clone_transforms = [
             {"dx": -260, "dy": -20, "scale": 0.92},
             {"dx":  260, "dy": -20, "scale": 0.92},
@@ -429,8 +449,7 @@ while True:
         ]
 
         for t in clone_transforms:
-            # Scale about the feet (bottom-center) so every clone stays grounded
-            # on the same floor line while shrinking, like it's standing further back.
+            # Clone positions
             M = cv2.getRotationMatrix2D((640, 720), 0, t["scale"])
             M[0, 2] += t["dx"]
             M[1, 2] += t["dy"]
@@ -444,15 +463,19 @@ while True:
             else:
                 img = cv2.addWeighted(img, 1.0, live_clone, 0.55 * reveal, 0)
 
-            # Smoke effect on the clones 
+            # Smoke effect on the clones --> rises from that clone's own ground spot
             if elapsed_clone < clone_poof_duration:
                 puff_pt = M @ np.array([640, 380, 1.0])
-                draw_smoke_cloud(img, (int(puff_pt[0]), int(puff_pt[1])), elapsed_clone / clone_poof_duration)
+                ground_pt = M @ np.array([640, 700, 1.0])
+                draw_smoke_cloud(img, (int(puff_pt[0]), int(puff_pt[1])), elapsed_clone / clone_poof_duration, ground_y=int(ground_pt[1]))
 
         # Rendering all the clones behind the original body
         if person_mask is not None:
             real_mask3 = cv2.merge([person_mask, person_mask, person_mask]).astype(np.float32) / 255.0
             img = (img.astype(np.float32) * (1 - real_mask3) + clone_src.astype(np.float32) * real_mask3).astype(np.uint8)
+        else:
+            cv2.putText(img, "SOLID CLONE MODE OFF - selfie_segmenter.tflite missing/not loaded",
+                        (20, 700), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255), 2)
 
         rem_clone = max(0, clone_duration - elapsed_clone)
         cv2.putText(img, f"DURATION: {rem_clone:.1f}s", (500, 50), cv2.FONT_HERSHEY_TRIPLEX, 1.2, (0, 0, 0), 2)
